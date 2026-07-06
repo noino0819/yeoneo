@@ -103,12 +103,16 @@ export async function getBusLocations(routeId: string): Promise<BusLocation[]> {
   }));
 }
 
+// 정류소번호(mobileNo) 없는 정류장은 미정차·가상(안내용) — 탑승 불가라 검색/지도에서 제외
+const boardable = (s: Record<string, unknown>) =>
+  !!String(s.mobileNo ?? "").trim() && !String(s.stationName ?? "").includes("미정차");
+
 // 초기 셋업용 (런타임 조회 X) — scripts/setup-constants.ts에서 사용
 export async function searchStations(keyword: string) {
   const body = await ggFetch(PATHS.stationSearch, { keyword });
   return asArray<Record<string, unknown>>(
     (body.busStationList as never) ?? (body.itemList as never),
-  );
+  ).filter(boardable);
 }
 
 // 지도 픽커: 핀 좌표 주변 정류소 (x=경도, y=위도)
@@ -116,7 +120,7 @@ export async function getStationsAround(x: string, y: string) {
   const body = await ggFetch(PATHS.stationAround, { x, y });
   return asArray<Record<string, unknown>>(
     (body.busStationAroundList as never) ?? (body.itemList as never),
-  );
+  ).filter(boardable);
 }
 
 export async function getStationRoutes(stationId: string) {

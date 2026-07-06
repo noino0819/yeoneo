@@ -5,7 +5,7 @@ export default function Home() {
         연어 <span aria-hidden>🐟</span>
       </h1>
       <p className="text-lg text-balance">
-        동탄 광역버스, 만석이면 거슬러 오르세요.
+        광역버스를 타기위해 오늘도 정류장을 거슬러오르는 모든 연어들을 위하여
       </p>
       <p className="max-w-md text-sm text-gray-500 text-balance">
         실시간 잔여좌석과 AI 예측으로 지금 어느 정류장에서 어떤 버스를 타야

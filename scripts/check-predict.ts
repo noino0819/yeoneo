@@ -28,7 +28,7 @@ assert(
   "확률 90% 도보7분이 확률 20% 도보0분보다 빨라야 함",
 );
 
-// walkMinutes: 동탄 위경도 근방 ~500m ≈ 8분
+// walkMinutes: 위경도 근방 ~500m ≈ 8분
 const m = walkMinutes({ lat: 37.2, lng: 127.07 }, { lat: 37.2045, lng: 127.07 });
 assert(m >= 7 && m <= 9, `도보시간 계산 이상: ${m}`);
 

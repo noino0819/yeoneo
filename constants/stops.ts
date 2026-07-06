@@ -58,12 +58,13 @@ export function classifyDest(destName: string): Destination | null {
 }
 
 // 예측 계수 — 튜닝 가능하게 상수로 분리 (F2)
+// 정류장당 승차 = 승객 도착률(명/분) × 앞차 간격(분). base는 전형 배차에서의 정류장당 승차.
 export const PREDICT_COEF = {
-  peakBoardBase: 6, // 피크 시간대 정류장당 기본 예상 승차수
-  offPeakBoardBase: 2, // 비피크 기본 예상 승차수
+  peakBoardBase: 6, // 피크: typicalHeadwayMin 배차 기준 정류장당 예상 승차수
+  offPeakBoardBase: 2, // 비피크 동일 기준
+  typicalHeadwayMin: 10, // base가 가정하는 배차간격 — 도착률 = base / typicalHeadwayMin
   peakStartHour: 7,
   peakEndHour: 9,
-  headwayFactor: 0.25, // 앞차와의 간격(분)당 승차 증가 — 녹화 데이터로 재튜닝 예정
   recentPassRelief: 1.5, // 최근 N분간 동일 방향 통과 대수당 승차 감소
   doubleDeckRelief: 0.6, // 2층버스면 승차 압박 완화 계수 (좌석 공급 ↑)
 };

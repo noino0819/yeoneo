@@ -22,9 +22,10 @@ export function predictBoarding(input: PredictInput): Prediction {
   const peak = input.hour >= C.peakStartHour && input.hour < C.peakEndHour;
   const base = peak ? C.peakBoardBase : C.offPeakBoardBase;
 
+  // 정류장당 승차 = 도착률(base/전형배차) × 실제 배차간격.
+  // v1은 base에 headway를 더해 정류장 수만큼 중복 가산 → 좌석 40석에도 2%가 나오던 원인.
   let perStop =
-    base +
-    C.headwayFactor * input.headwayMin -
+    (base / C.typicalHeadwayMin) * input.headwayMin -
     C.recentPassRelief * input.recentSamePassCount;
   if (input.isDoubleDeck) perStop *= C.doubleDeckRelief;
   perStop = Math.max(0.5, perStop);

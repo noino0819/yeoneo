@@ -28,6 +28,20 @@ assert(
   "확률 90% 도보7분이 확률 20% 도보0분보다 빨라야 함",
 );
 
+// 회귀 방지: 비피크·좌석 넉넉·기본배차(15분)에서 헐값 확률이 나오면 안 됨 (headway 중복가산 버그)
+const midday = predictBoarding({
+  remainSeats: 39,
+  upstreamStopCount: 7,
+  hour: 13,
+  headwayMin: 15,
+  recentSamePassCount: 0,
+  isDoubleDeck: false,
+});
+assert(
+  midday.boardingProbability >= 0.7,
+  `비피크 39석/7정거장 확률이 너무 낮음: ${midday.boardingProbability}`,
+);
+
 // walkMinutes: 위경도 근방 ~500m ≈ 8분
 const m = walkMinutes({ lat: 37.2, lng: 127.07 }, { lat: 37.2045, lng: 127.07 });
 assert(m >= 7 && m <= 9, `도보시간 계산 이상: ${m}`);

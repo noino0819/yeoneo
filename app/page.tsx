@@ -182,6 +182,7 @@ export default function Home() {
   useEffect(loadRoutes, [loadRoutes]);
 
   const poll = useCallback(() => {
+    if (document.hidden) return; // 백그라운드 PWA가 일일 쿼터 소진하는 것 방지
     fetch(`/api/arrivals?stationId=${origin.stationId}`)
       .then((r) => r.json())
       .then((d) => {
@@ -190,7 +191,13 @@ export default function Home() {
         setUpdatedAt(new Date());
         setError(null);
       })
-      .catch(() => setError("도착 정보를 불러오지 못했습니다"));
+      .catch((e) =>
+        setError(
+          String(e).includes("한도")
+            ? "오늘 공공데이터 호출 한도를 다 썼어요 (내일 자정 리셋)"
+            : "도착 정보를 불러오지 못했습니다",
+        ),
+      );
   }, [origin.stationId]);
 
   // 라이브: 도착정보 폴링
@@ -206,9 +213,11 @@ export default function Home() {
     if (replay) return;
     let dead = false;
     const run = () =>
-      fetch(
-        `/api/salmon?dest=${tab}&stationId=${origin.stationId}&name=${encodeURIComponent(origin.name)}&lat=${origin.lat}&lng=${origin.lng}`,
-      )
+      document.hidden
+        ? Promise.resolve()
+        : fetch(
+            `/api/salmon?dest=${tab}&stationId=${origin.stationId}&name=${encodeURIComponent(origin.name)}&lat=${origin.lat}&lng=${origin.lng}`,
+          )
         .then((r) => r.json())
         .then((d) => {
           if (dead || d.error) return;
@@ -246,7 +255,8 @@ export default function Home() {
     const ids = [...new Set(Object.values(destVia).map((v) => v.stationId))];
     if (ids.length === 0) return;
     let dead = false;
-    const run = () =>
+    const run = () => {
+      if (document.hidden) return;
       Promise.all(
         ids.map((id) =>
           fetch(`/api/arrivals?stationId=${id}`)
@@ -262,6 +272,7 @@ export default function Home() {
           setDestArrivals(m);
         })
         .catch(() => {});
+    };
     run();
     const id = setInterval(run, POLL_MS);
     return () => {
@@ -652,8 +663,6 @@ export default function Home() {
             <ErrorCard detail={error} onRetry={retry} onReplay={() => setReplay(true)} />
           ) : routes === null || (!updatedAt && !error) ? (
             <SkeletonCard />
-          ) : error && arrivals.size === 0 && !replay ? (
-            <ErrorCard detail={error} onRetry={retry} onReplay={() => setReplay(true)} />
           ) : tabRoutes.length === 0 ? (
             <EmptyCard replay={replay} onReplay={() => setReplay(true)} />
           ) : (
@@ -666,7 +675,10 @@ export default function Home() {
               )}
               {error && !replay && (
                 <p className="rounded-[14px] bg-bad-soft px-3.5 py-2.5 text-xs font-semibold text-bad">
-                  {error} — 마지막으로 받은 정보를 표시 중이에요
+                  {error} —{" "}
+                  {arrivals.size > 0
+                    ? "마지막으로 받은 정보를 표시 중이에요"
+                    : "도착 시간 없이 노선만 보여드려요"}
                 </p>
               )}
               <ul className="flex flex-col gap-2.5">

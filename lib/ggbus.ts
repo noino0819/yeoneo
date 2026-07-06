@@ -24,6 +24,8 @@ async function ggFetch(
   const qs = new URLSearchParams({ serviceKey: key, format: "json", ...params });
   const res = await fetch(`${BASE}${path}?${qs}`, { cache: "no-store" });
   const text = await res.text();
+  // 공공데이터포털 일일 트래픽 초과 — JSON이 아닌 "API token quota exceeded" 텍스트가 옴
+  if (res.status === 429) throw new Error("공공데이터 호출 한도 초과");
   const body = text.trimStart().startsWith("<") ? xml.parse(text) : JSON.parse(text);
   const response = body.response ?? body;
   const code = response?.msgHeader?.resultCode;

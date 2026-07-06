@@ -25,6 +25,25 @@
 
 <img src="docs/wave.svg" width="100%" alt="" />
 
+## 📱 미리보기
+
+<table>
+<tr>
+<td width="25%" valign="top"><img src="docs/shots/shot-light.png" alt="라이트 — 실시간 정류장 보드" /></td>
+<td width="25%" valign="top"><img src="docs/shots/shot-dark.png" alt="다크 — 딥리버 스킨" /></td>
+<td width="25%" valign="top"><img src="docs/shots/shot-salmon.png" alt="연어 모드 — 상류 정류장 추천" /></td>
+<td width="25%" valign="top"><img src="docs/shots/shot-picker.png" alt="지도 기반 정류장 픽커" /></td>
+</tr>
+<tr>
+<td align="center"><sub>☀️ 선셋새먼 보드 — 잔여좌석·탑승확률</sub></td>
+<td align="center"><sub>🌙 딥리버 다크</sub></td>
+<td align="center"><sub>🐟 연어 모드 — 상류 추천</sub></td>
+<td align="center"><sub>🗺️ 지도 정류장 픽커</sub></td>
+</tr>
+</table>
+
+<img src="docs/wave.svg" width="100%" alt="" />
+
 ## 🐟 왜 "연어"인가요?
 
 <img align="right" src="app/salmon/sad.png" width="128" alt="만석 버스를 보낸 시무룩한 연어" />

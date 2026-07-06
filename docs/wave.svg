@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 46">
+  <g fill="#f97862" opacity="0.3">
+    <path d="M0 20 Q112.5 6 225 20 T450 20 T675 20 T900 20 T1125 20 T1350 20 T1575 20 T1800 20 V46 H0 Z">
+      <animateTransform attributeName="transform" type="translate" values="-450 0;0 0" dur="13s" repeatCount="indefinite"/>
+    </path>
+  </g>
+  <g fill="#f97862" opacity="0.7">
+    <path d="M0 27 Q112.5 13 225 27 T450 27 T675 27 T900 27 T1125 27 T1350 27 T1575 27 T1800 27 V46 H0 Z">
+      <animateTransform attributeName="transform" type="translate" values="0 0;-450 0" dur="8s" repeatCount="indefinite"/>
+    </path>
+  </g>
+</svg>

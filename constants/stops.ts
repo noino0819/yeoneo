@@ -43,22 +43,19 @@ export const HOME_STOP: PresetStop = {
 
 export type Destination = "gangnam" | "gangbuk";
 
-// 경유노선 실측 기준 방향 태깅. 6003(판교)·7200(인덕원)은 서울 방면이 아니라 제외.
-export const ROUTE_TAGS: Record<
-  string,
-  { dest: Destination; doubleDeckPossible?: boolean }
-> = {
-  // 강남 방면 (신분당선강남역·서초)
-  M4434: { dest: "gangnam" },
-  "M4434(예약)": { dest: "gangnam" },
-  "6001": { dest: "gangnam" },
-  "6001(예약)": { dest: "gangnam" },
-  "6002-1": { dest: "gangnam" },
-  "6008": { dest: "gangnam" },
-  // 서울역·강북 방면 — 배차 길어 놓쳤을 때 손실 큼 (예측 가치 최대)
-  M4130: { dest: "gangbuk" },
-  "M4130(예약)": { dest: "gangbuk" },
+// 방향 분류: 노선 종점명(routeDestName) 키워드 매칭 — 화성시 전역 어느 정류장이든 동작.
+// 예) 동탄 기준 강남행 M4434·6001·6002-1·6008, 서울역행 M4130이 자동 분류됨.
+export const DEST_KEYWORDS: Record<Destination, string[]> = {
+  gangnam: ["강남", "서초", "양재", "신논현"],
+  gangbuk: ["서울역", "숭례문", "명동", "광화문", "강북"],
 };
+
+export function classifyDest(destName: string): Destination | null {
+  for (const dest of Object.keys(DEST_KEYWORDS) as Destination[]) {
+    if (DEST_KEYWORDS[dest].some((kw) => destName.includes(kw))) return dest;
+  }
+  return null; // 서울 방면 아님 → 보드 비표시
+}
 
 // 예측 계수 — 튜닝 가능하게 상수로 분리 (F2)
 export const PREDICT_COEF = {

@@ -29,15 +29,13 @@
 
 <table>
 <tr>
-<td width="25%" valign="top"><img src="docs/shots/shot-light.png" alt="라이트 — 실시간 정류장 보드" /></td>
-<td width="25%" valign="top"><img src="docs/shots/shot-dark.png" alt="다크 — 딥리버 스킨" /></td>
-<td width="25%" valign="top"><img src="docs/shots/shot-salmon.png" alt="연어 모드 — 상류 정류장 추천" /></td>
-<td width="25%" valign="top"><img src="docs/shots/shot-picker.png" alt="지도 기반 정류장 픽커" /></td>
+<td width="33%" valign="top"><img src="docs/shots/shot-light.png" alt="라이트 — 실시간 정류장 보드" /></td>
+<td width="33%" valign="top"><img src="docs/shots/shot-dark.png" alt="다크 — 딥리버 스킨" /></td>
+<td width="33%" valign="top"><img src="docs/shots/shot-picker.png" alt="지도 기반 정류장 픽커" /></td>
 </tr>
 <tr>
 <td align="center"><sub>☀️ 선셋새먼 보드 — 잔여좌석·탑승확률</sub></td>
 <td align="center"><sub>🌙 딥리버 다크</sub></td>
-<td align="center"><sub>🐟 연어 모드 — 상류 추천</sub></td>
 <td align="center"><sub>🗺️ 지도 정류장 픽커</sub></td>
 </tr>
 </table>
@@ -118,6 +116,12 @@ API 한도가 터져도 브리핑은 항상 나옵니다.
 1. 출발 정류장의 도착 정보에서 **만석 위험**을 감지하면
 2. 노선의 **상류 정류장 체인**을 동적으로 따라 올라가며 각 정류장의 도달 시 좌석을 예측하고
 3. `도보 + 대기 + 승차` 총 소요를 비교해 **가장 빨리 앉아 가는 출발지**를 추천합니다
+
+<div align="center">
+<img src="docs/shots/shot-salmon.png" width="480" alt="연어 모드 실제 화면 — 상류 정류장별 도보시간·탑승확률 비교와 추천" />
+
+<sub>🐟 실제 화면 — 체인 위를 헤엄치는 연어와 정류장별 확률 비교</sub>
+</div>
 
 <details>
 <summary><b>🧮 예측 공식 자세히 보기</b></summary>

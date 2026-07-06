@@ -12,6 +12,7 @@ interface Obs {
   loc: number;
   seats: number;
   dd: boolean;
+  hour: number;
   peak: boolean;
   headway: number | null;
 }
@@ -48,6 +49,7 @@ for (const f of files) {
           loc: a.locationNo1,
           seats: a.remainSeatCnt1!,
           dd: a.lowPlate1 === 2,
+          hour,
           peak: hour >= C.peakStartHour && hour < C.peakEndHour,
           headway:
             a.predictTime1 !== null && a.predictTime2 !== null
@@ -65,6 +67,7 @@ interface Sample {
   perStop: number;
   stops: number;
   drop: number;
+  hour: number;
   peak: boolean;
   dd: boolean;
   headway: number | null;
@@ -79,7 +82,7 @@ for (const obs of tracks.values()) {
     if (stops < 1 || b.t - a.t > 5 * 60_000) continue; // 전진 없음 / 관측 공백
     const perStop = (a.seats - b.seats) / stops;
     if (Math.abs(perStop) > 15) continue; // API 글리치 컷
-    samples.push({ perStop, stops, drop: a.seats - b.seats, peak: a.peak, dd: a.dd, headway: a.headway });
+    samples.push({ perStop, stops, drop: a.seats - b.seats, hour: a.hour, peak: a.peak, dd: a.dd, headway: a.headway });
   }
 }
 
@@ -158,6 +161,17 @@ if (samples.length) {
   console.log(
     `\n백테스트 MAE(좌석 감소 예측 오차): 현행 ${mae({ peak: C.peakBoardBase, offPeak: C.offPeakBoardBase, ddRelief: C.doubleDeckRelief }).toFixed(2)}석 → 피팅 ${mae(fitted).toFixed(2)}석`,
   );
+
+  // 실제 피크 창 확인용 — peakStartHour/peakEndHour(현행 7~9시)가 맞는지 눈으로 판단
+  const byHour = new Map<number, number[]>();
+  for (const s of samples) {
+    const list = byHour.get(s.hour) ?? [];
+    list.push(s.perStop);
+    byHour.set(s.hour, list);
+  }
+  console.log("\n시간대별 정류장당 승차(중앙값 · 표본수) — 피크 창 조정 참고:");
+  for (const [h, xs] of [...byHour].sort((x, y) => x[0] - y[0]))
+    console.log(`  ${String(h).padStart(2, "0")}시: ${median(xs).toFixed(1)}명 (${xs.length})`);
 } else {
   console.log("\n표본 0개 — 녹화가 짧거나 좌석 정보가 없는 노선입니다.");
 }

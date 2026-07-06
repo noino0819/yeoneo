@@ -86,6 +86,18 @@ export async function getArrivals(stationId: string): Promise<Arrival[]> {
   }));
 }
 
+// 도착정보 공용 캐시 — arrivals·salmon 라우트가 같은 정류장(집앞)을 각자 부르던 중복 제거.
+// TTL 20초: 클라 폴링(25초~)보다 짧아 신선도 유지, 같은 틱 안의 중복 호출은 흡수
+const arrCache = new Map<string, { at: number; data: Arrival[] }>();
+const ARR_TTL = 20_000;
+export async function getArrivalsCached(stationId: string): Promise<Arrival[]> {
+  const hit = arrCache.get(stationId);
+  if (hit && Date.now() - hit.at < ARR_TTL) return hit.data;
+  const data = await getArrivals(stationId);
+  arrCache.set(stationId, { at: Date.now(), data });
+  return data;
+}
+
 export interface BusLocation {
   routeId: string;
   stationSeq: number; // 현재 정류장 순번

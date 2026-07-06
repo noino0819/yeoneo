@@ -1,21 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getArrivals, type Arrival } from "@/lib/ggbus";
+import { getArrivalsCached } from "@/lib/ggbus";
 import { buildSalmon, chainForStation, kstHour, type SalmonData } from "@/lib/salmon";
 import { HOME_STOP, type Destination } from "@/constants/stops";
 
 // F2+F3 라이브: 출발 정류장 + 상류 정류장 동시 예측·비교 (연어 모드)
 export type SalmonResponse = SalmonData & { generatedAt: number };
-
-const cache = new Map<string, { at: number; data: Arrival[] }>();
-const TTL = 15_000;
-
-async function cachedArrivals(stationId: string): Promise<Arrival[]> {
-  const hit = cache.get(stationId);
-  if (hit && Date.now() - hit.at < TTL) return hit.data;
-  const data = await getArrivals(stationId);
-  cache.set(stationId, { at: Date.now(), data });
-  return data;
-}
 
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams;
@@ -30,7 +19,7 @@ export async function GET(req: NextRequest) {
     const chain = await chainForStation(origin, dest);
     const arrivalsByStation = Object.fromEntries(
       await Promise.all(
-        chain.map(async (s) => [s.stationId, await cachedArrivals(s.stationId)]),
+        chain.map(async (s) => [s.stationId, await getArrivalsCached(s.stationId)]),
       ),
     );
     const body: SalmonResponse = {

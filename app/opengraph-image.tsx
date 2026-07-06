@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { ImageResponse } from "next/og";
 
 // 연어 UI.dc 2a — 선셋 OG (720×378 시안의 1200×630 스케일업, ×5/3)
@@ -11,10 +13,13 @@ const font = (weight: string) =>
   ).then((r) => r.arrayBuffer());
 
 export default async function Image() {
-  const [extraBold, semiBold] = await Promise.all([
+  const [extraBold, semiBold, mascot] = await Promise.all([
     font("ExtraBold"),
     font("SemiBold"),
+    // 이 라우트는 빌드 시 정적 생성되므로 fs 접근은 빌드 타임에만 일어남
+    readFile(path.join(process.cwd(), "app/salmon/front.png")),
   ]);
+  const mascotSrc = `data:image/png;base64,${mascot.toString("base64")}`;
   return new ImageResponse(
     (
       <div
@@ -52,25 +57,13 @@ export default async function Image() {
             <div key={i} style={{ width: 23, height: 8, background: "#BFD7EA" }} />
           ))}
         </div>
-        <svg
+        <img
+          src={mascotSrc}
+          alt=""
+          width={300}
+          height={Math.round((300 * 480) / 402)}
           style={{ position: "absolute", right: 107, bottom: 97 }}
-          width={317}
-          viewBox="0 0 88 68"
-        >
-          <polygon points="60,34 86,12 79,34 86,56" fill="#E05A43" />
-          <polygon points="28,10 44,2 47,16" fill="#E05A43" />
-          <ellipse cx="34" cy="36" rx="33" ry="26" fill="#F97862" />
-          <ellipse cx="30" cy="47" rx="23" ry="12" fill="#FFC9B2" />
-          <circle cx="19" cy="31" r="9" fill="#FFFFFF" />
-          <circle cx="21" cy="32" r="4.6" fill="#33251F" />
-          <circle cx="23" cy="30" r="1.7" fill="#FFFFFF" />
-          <circle cx="45" cy="31" r="9" fill="#FFFFFF" />
-          <circle cx="47" cy="32" r="4.6" fill="#33251F" />
-          <circle cx="49" cy="30" r="1.7" fill="#FFFFFF" />
-          <ellipse cx="33" cy="44" rx="4" ry="2.6" fill="#C2492F" />
-          <circle cx="10" cy="41" r="3.6" fill="#FFA98C" />
-          <circle cx="56" cy="41" r="3.6" fill="#FFA98C" />
-        </svg>
+        />
         <div
           style={{
             position: "absolute",

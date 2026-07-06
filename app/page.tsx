@@ -6,7 +6,8 @@ import type { Arrival } from "@/lib/ggbus";
 import type { TaggedRoute } from "@/app/api/routes/route";
 import type { SalmonResponse } from "@/app/api/salmon/route";
 import type { ReplayResponse } from "@/app/api/replay/route";
-import { Salmon, SalmonMini, SalmonSad, SalmonSleep } from "@/app/mascot";
+import { Salmon, SalmonMini, SalmonPoint, SalmonSad, SalmonSleep } from "@/app/mascot";
+import { walkMinutes } from "@/lib/walk";
 
 const POLL_MS = 25_000;
 const REPLAY_STEP_MS = 2_500; // 30초 간격 스냅샷을 2.5초마다 → 12배속
@@ -27,6 +28,11 @@ const seatGrade = (n: number | null): Grade | null =>
 
 const seatText = (n: number | null) => (n === null || n < 0 ? "—" : `${n}석`);
 
+// 정류장 좌표 — 내 위치 기반 도보시간(연어 UI.dc 3a "지금 출발" 타이밍)에 사용
+const STOP_COORDS: Record<string, { lat: number; lng: number }> = Object.fromEntries(
+  [HOME_STOP, ...HOME_STOP.upstream].map((s) => [s.stationId, { lat: s.lat, lng: s.lng }]),
+);
+
 export default function Home() {
   const [routes, setRoutes] = useState<TaggedRoute[] | null>(null);
   const [arrivals, setArrivals] = useState<Map<string, Arrival>>(new Map());
@@ -37,8 +43,34 @@ export default function Home() {
   const [replay, setReplay] = useState(false);
   const [replayT, setReplayT] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(null);
+  const [geoPrompt, setGeoPrompt] = useState(false);
   const salmonRef = useRef<SalmonResponse | null>(null);
   const replayIdx = useRef(0);
+
+  const locate = useCallback(() => {
+    navigator.geolocation?.getCurrentPosition(
+      (p) => {
+        setGeo({ lat: p.coords.latitude, lng: p.coords.longitude });
+        localStorage.setItem("yn-geo", "on");
+        setGeoPrompt(false);
+      },
+      () => {
+        localStorage.setItem("yn-geo", "off");
+        setGeoPrompt(false);
+      },
+      { maximumAge: 60_000 },
+    );
+  }, []);
+
+  // 위치: 이전에 허용했으면 조용히 갱신, 처음이면 카드로 물어봄
+  // (localStorage는 SSR에 없어 hydration 후 effect에서 읽어야 함)
+  useEffect(() => {
+    const pref = localStorage.getItem("yn-geo");
+    if (pref === "on") locate();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    else if (pref === null) setGeoPrompt(true);
+  }, [locate]);
 
   const loadRoutes = useCallback(() => {
     fetch(`/api/routes?stationId=${HOME_STOP.stationId}`)
@@ -179,6 +211,11 @@ export default function Home() {
       ? Math.round(homeBest.commuteMin - rec.commuteMin)
       : null;
   const riverStops = salmonTab ? [...salmonTab.stops].reverse() : [];
+  const recStop = rec ? salmonTab?.stops.find((s) => s.name === rec.stopName) : null;
+  const myWalk =
+    geo && recStop && STOP_COORDS[recStop.stationId]
+      ? walkMinutes(geo, STOP_COORDS[recStop.stationId])
+      : null;
 
   const retry = () => {
     setError(null);
@@ -190,7 +227,7 @@ export default function Home() {
     <main className="mx-auto w-full max-w-[430px] flex-1 px-4 pb-10 pt-3 lg:max-w-[1080px]">
       <header className="flex items-center gap-3 px-1">
         <span className="yn-bob shrink-0">
-          <Salmon width={46} hero />
+          <Salmon width={42} />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
@@ -369,10 +406,49 @@ export default function Home() {
         </section>
 
         <aside className="contents lg:flex lg:flex-col lg:gap-4">
+          {/* 위치 권한 카드 (UI.dc 3a) */}
+          {geoPrompt && (
+            <section className={`yn-fadeup order-1 ${CARD} p-4 lg:order-none`}>
+              <div className="flex items-start gap-3">
+                <span className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-info-soft">
+                  <span className="relative h-3.5 w-3.5 rounded-full border-[3.5px] border-info">
+                    <span className="absolute left-1/2 top-1/2 h-[5px] w-[5px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-info" />
+                  </span>
+                </span>
+                <div>
+                  <b className="text-sm font-extrabold text-ink">
+                    내 위치로 도보시간을 계산할까요?
+                  </b>
+                  <p className="mt-1 text-xs font-medium leading-relaxed text-faint">
+                    &ldquo;지금 출발하면 도착 3분 전&rdquo; 같은 출발 타이밍을
+                    알려드려요. 위치는 서버에 저장되지 않아요.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3.5 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    localStorage.setItem("yn-geo", "off");
+                    setGeoPrompt(false);
+                  }}
+                  className="rounded-xl bg-track py-3 text-[13px] font-bold text-faint"
+                >
+                  나중에
+                </button>
+                <button
+                  onClick={locate}
+                  className="rounded-xl bg-accent py-3 text-[13px] font-bold text-on-accent"
+                >
+                  위치 허용
+                </button>
+              </div>
+            </section>
+          )}
+
           {/* F4 AI 브리핑 */}
           {briefing && (
-            <section className="yn-fadeup order-1 flex items-start gap-3 rounded-[20px] bg-accent-soft p-4 lg:order-none">
-              <Salmon width={30} className="mt-0.5 shrink-0" />
+            <section className="yn-fadeup order-2 flex items-start gap-3 rounded-[20px] bg-accent-soft p-4 lg:order-none">
+              <SalmonPoint width={28} className="mt-0.5 shrink-0" />
               <div>
                 <p className="mb-1 text-[11px] font-extrabold tracking-wide text-accent-deep">
                   {briefing.ai ? "AI 통근 브리핑" : "오늘의 요약"} · 예측치 기반
@@ -418,8 +494,8 @@ export default function Home() {
               {/* 강 — 상류가 왼쪽 */}
               <div className="relative mt-3.5 h-[58px]">
                 <div className="river-track absolute left-2 right-2 top-[26px] h-1 rounded-full" />
-                <span className="yn-upstream absolute top-4">
-                  <SalmonMini width={26} flip />
+                <span className="yn-upstream absolute top-3 z-[2]">
+                  <SalmonMini width={32} />
                 </span>
                 {riverStops.map((s, i) => {
                   const isRec = rec?.stopName === s.name;
@@ -527,16 +603,32 @@ export default function Home() {
               )}
 
               {rec && (
-                <div className="mt-3 flex items-center gap-2.5 rounded-[14px] bg-river px-3.5 py-3">
-                  <span className="yn-pulse h-2 w-2 shrink-0 rounded-full bg-[#7FD6A8]" />
-                  <span className="text-[12.5px] font-bold text-[#EAF2F9]">
-                    {rec.stopName === HOME_STOP.name
-                      ? "지금 이 정류장"
-                      : `${rec.stopName} (도보 ${rec.walkMin}분)`}
-                    에서 <b className="text-[#FFB09B]">{rec.routeName}</b> · {rec.eta}분 후
-                    · 예상 잔여 {Math.max(rec.expectedSeats, 0)}석
-                    {rec.isDoubleDeck && " · 2층버스"}
-                  </span>
+                <div className="mt-3 flex items-start gap-2.5 rounded-[14px] bg-river px-3.5 py-3">
+                  <span className="yn-pulse mt-1 h-2 w-2 shrink-0 rounded-full bg-[#7FD6A8]" />
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[12.5px] font-bold text-[#EAF2F9]">
+                      {rec.stopName === HOME_STOP.name
+                        ? "지금 이 정류장"
+                        : `${rec.stopName} (도보 ${rec.walkMin}분)`}
+                      에서 <b className="text-[#FFB09B]">{rec.routeName}</b> · {rec.eta}분
+                      후 · 예상 잔여 {Math.max(rec.expectedSeats, 0)}석
+                      {rec.isDoubleDeck && " · 2층버스"}
+                    </span>
+                    {myWalk !== null && (
+                      <span className="text-xs font-semibold text-[#C6D8E6]">
+                        내 위치에서 도보 {myWalk}분 ·{" "}
+                        {rec.eta - myWalk >= 1 ? (
+                          <b className="text-[#7FD6A8]">
+                            지금 출발하면 도착 {rec.eta - myWalk}분 전
+                          </b>
+                        ) : (
+                          <b className="text-[#FFB09B]">
+                            서둘러야 해요 — 걸어서 {myWalk}분, 버스는 {rec.eta}분 후
+                          </b>
+                        )}
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
             </section>
@@ -588,8 +680,8 @@ function ErrorCard({
 }) {
   return (
     <div className={`${CARD} p-6 text-center`}>
-      <span className="inline-block rotate-12">
-        <SalmonSad width={58} />
+      <span className="inline-block">
+        <SalmonSad width={56} />
       </span>
       <p className="mt-2.5 text-sm font-extrabold">물살이 너무 세요</p>
       <p className="mt-1 text-xs font-medium text-faint">

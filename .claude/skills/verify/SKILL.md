@@ -25,3 +25,6 @@ description: 연어 앱 변경을 실제로 띄워서 눈으로 확인하는 레
 ## 주의
 - salmon(/api/salmon)이 GBIS 플레이크로 한 틱 빌 수 있음 — 카드에 확률 바 없이 뜨는 건 정상 (다음 폴링에 채워짐)
 - 심야엔 도착정보가 비어 빈 상태 카드가 뜸 — 리플레이 모드로 데이터 있는 화면 확인
+
+## 위치 기능 검증
+puppeteer: `ctx.overridePermissions(origin, ["geolocation"])` + `page.setGeolocation({latitude, longitude})` 후 "위치 허용" 버튼 클릭 → 추천 밴드에 "내 위치에서 도보 N분" 라인 확인. localStorage 키 `yn-geo` (on/off).

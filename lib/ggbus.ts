@@ -44,14 +44,18 @@ function asArray<T>(v: T | T[] | undefined | null): T[] {
 export interface Arrival {
   routeId: string;
   routeName: string;
+  routeDestName: string; // 종점명 — 방향 분류에 사용
   staOrder: number;
   predictTime1: number | null; // 도착예정(분)
   predictTime2: number | null;
   remainSeatCnt1: number | null; // 잔여좌석 (-1 = 정보 없음)
   remainSeatCnt2: number | null;
+  locationNo1: number | null; // 몇 정거장 전
+  stationNm1: string | null; // 버스 현재 정류장명
   plateNo1: string | null;
   plateNo2: string | null;
-  lowPlate1: string | null; // 차량구분 참고
+  lowPlate1: number | null; // 0 일반 / 1 저상 / 2 2층
+  crowded1: number | null;
 }
 
 const num = (v: unknown): number | null =>
@@ -64,14 +68,18 @@ export async function getArrivals(stationId: string): Promise<Arrival[]> {
   ).map((it) => ({
     routeId: String(it.routeId),
     routeName: String(it.routeName ?? it.routeId),
+    routeDestName: String(it.routeDestName ?? ""),
     staOrder: Number(it.staOrder ?? 0),
     predictTime1: num(it.predictTime1),
     predictTime2: num(it.predictTime2),
     remainSeatCnt1: num(it.remainSeatCnt1),
     remainSeatCnt2: num(it.remainSeatCnt2),
+    locationNo1: num(it.locationNo1),
+    stationNm1: it.stationNm1 ? String(it.stationNm1) : null,
     plateNo1: it.plateNo1 ? String(it.plateNo1) : null,
     plateNo2: it.plateNo2 ? String(it.plateNo2) : null,
-    lowPlate1: it.lowPlate1 !== undefined ? String(it.lowPlate1) : null,
+    lowPlate1: num(it.lowPlate1),
+    crowded1: num(it.crowded1),
   }));
 }
 

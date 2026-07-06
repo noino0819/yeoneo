@@ -63,7 +63,7 @@ export const PREDICT_COEF = {
   offPeakBoardBase: 2, // 비피크 기본 예상 승차수
   peakStartHour: 7,
   peakEndHour: 9,
-  headwayFactor: 0.4, // 앞차와의 간격(분)당 승차 증가
+  headwayFactor: 0.25, // 앞차와의 간격(분)당 승차 증가 — 녹화 데이터로 재튜닝 예정
   recentPassRelief: 1.5, // 최근 N분간 동일 방향 통과 대수당 승차 감소
   doubleDeckRelief: 0.6, // 2층버스면 승차 압박 완화 계수 (좌석 공급 ↑)
 };

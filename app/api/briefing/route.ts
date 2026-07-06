@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 // F4: AI 통근 브리핑 — Gemini + 60초 캐시 + 실패 시 룰 기반 폴백
 // 무료 한도(RPD) 순서대로 폴백: 3.1-flash-lite(500) → 2.5-flash-lite(20) → 룰 기반 문장
 const MODELS = ["gemini-3.1-flash-lite", "gemini-2.5-flash-lite"];
-let cached: { at: number; text: string; ai: boolean } | null = null;
+const cached = new Map<string, { at: number; text: string; ai: boolean }>();
 const TTL = 60_000;
 
 const SYSTEM = `광역버스 통근 비서 '연어'의 브리핑 작성자입니다.
@@ -57,19 +57,22 @@ function fallbackText(data: Record<string, unknown>): string {
 }
 
 export async function POST(req: NextRequest) {
-  if (cached && Date.now() - cached.at < TTL) {
-    return NextResponse.json({ briefing: cached.text, ai: cached.ai, cachedAt: cached.at });
-  }
   const data = await req.json().catch(() => null);
   if (!data) {
     return NextResponse.json({ error: "JSON body 필요" }, { status: 400 });
   }
+  const key = String(data.dest ?? "default");
+  const hit = cached.get(key);
+  if (hit && Date.now() - hit.at < TTL) {
+    return NextResponse.json({ briefing: hit.text, ai: hit.ai, cachedAt: hit.at });
+  }
+  let entry: { at: number; text: string; ai: boolean };
   try {
-    const text = await gemini(data);
-    cached = { at: Date.now(), text, ai: true };
+    entry = { at: Date.now(), text: await gemini(data), ai: true };
   } catch (e) {
     console.error("briefing fallback:", e);
-    cached = { at: Date.now(), text: fallbackText(data), ai: false };
+    entry = { at: Date.now(), text: fallbackText(data), ai: false };
   }
-  return NextResponse.json({ briefing: cached.text, ai: cached.ai, cachedAt: cached.at });
+  cached.set(key, entry);
+  return NextResponse.json({ briefing: entry.text, ai: entry.ai, cachedAt: entry.at });
 }

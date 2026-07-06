@@ -100,6 +100,8 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-sans);
+  /* 자체 당겨서-새로고침과 브라우저 기본 새로고침 제스처 충돌 방지 */
+  overscroll-behavior-y: contain;
 }
 
 @keyframes yn-bob {

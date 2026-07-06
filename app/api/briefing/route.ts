@@ -8,7 +8,9 @@ const TTL = 60_000;
 
 const SYSTEM = `광역버스 통근 비서 '연어'의 브리핑 작성자입니다.
 입력 JSON에 있는 사실만 언급하고, 과장하지 마세요.
-정확히 2~3문장, 존댓말로 지금 어느 정류장에서 어떤 차를 타야 하는지 판단을 내려주세요.`;
+정확히 2~3문장, 존댓말로 지금 어느 정류장에서 어떤 차를 타야 하는지 판단을 내려주세요.
+destination이 있으면 그 도착 정류장 기준입니다. rideMin(분)이 있으면 승차시간과
+대략적인 총 소요를 함께 언급하세요 (rideEstimated=true면 '약 N분'처럼 추정임을 표현).`;
 
 async function gemini(data: unknown): Promise<string> {
   const key = process.env.GEMINI_API_KEY;
@@ -61,7 +63,11 @@ export async function POST(req: NextRequest) {
   if (!data) {
     return NextResponse.json({ error: "JSON body 필요" }, { status: 400 });
   }
-  const key = String(data.dest ?? "default");
+  // 방면 + 출발(첫 정류장) + 도착 정류장까지 캐시 키에 — 선택 바꾸면 새 브리핑
+  const originName =
+    Array.isArray(data.stops) && data.stops[0]?.name ? String(data.stops[0].name) : "";
+  const destName = (data.destination as { name?: string } | null)?.name ?? "";
+  const key = `${String(data.dest ?? "default")}:${originName}:${destName}`;
   const hit = cached.get(key);
   if (hit && Date.now() - hit.at < TTL) {
     return NextResponse.json({ briefing: hit.text, ai: hit.ai, cachedAt: hit.at });

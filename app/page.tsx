@@ -83,10 +83,20 @@ export default function Home() {
   const [destVia, setDestVia] = useState<Record<string, ViaInfo> | null>(null);
   // destArrivals: `${routeId}@${stationId}` → 도착 정류장 도착예정
   const [destArrivals, setDestArrivals] = useState<Map<string, Arrival>>(new Map());
-  const briefRef = useRef<Pick<
-    SalmonResponse,
-    "dest" | "stops" | "recommendation" | "altViaGangnam"
-  > | null>(null);
+  // 당겨서 새로고침: pull = 당긴 거리(px), refreshKey 증가 → 폴링 effect 즉시 재실행
+  const [pull, setPull] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const pullStart = useRef<number | null>(null);
+  const briefRef = useRef<
+    | (Pick<SalmonResponse, "dest" | "stops" | "recommendation" | "altViaGangnam"> & {
+        destination: {
+          name: string;
+          rideMin: number | null;
+          rideEstimated: boolean | null;
+        } | null;
+      })
+    | null
+  >(null);
   const replayIdx = useRef(0);
 
   const pickOrigin = (st: PickedStop) => {
@@ -171,7 +181,7 @@ export default function Home() {
     poll();
     const id = setInterval(poll, POLL_MS);
     return () => clearInterval(id);
-  }, [poll, replay]);
+  }, [poll, replay, refreshKey]);
 
   // 라이브: F3 연어 모드
   useEffect(() => {
@@ -193,7 +203,7 @@ export default function Home() {
       dead = true;
       clearInterval(id);
     };
-  }, [tab, replay, origin]);
+  }, [tab, replay, origin, refreshKey]);
 
   // 도착 정류장: 노선 경유목록 기준으로 어느 노선이 지나는지 + 노선별 도착 stationId
   useEffect(() => {
@@ -240,7 +250,7 @@ export default function Home() {
       dead = true;
       clearInterval(id);
     };
-  }, [destStop, destVia]);
+  }, [destStop, destVia, refreshKey]);
 
   // 리플레이: fixture 스냅샷 재생 (예측 로직은 라이브와 동일)
   useEffect(() => {
@@ -295,6 +305,7 @@ export default function Home() {
             },
           })),
           altViaGangnam: s.altViaGangnam,
+          destination: s.destination,
         }),
       })
         .then((r) => r.json())
@@ -407,6 +418,25 @@ export default function Home() {
     );
   })();
 
+  // AI 브리핑 입력 — 도착 필터 반영된 뷰 + 도착 정류장·승차시간 (렌더마다 최신화)
+  useEffect(() => {
+    briefRef.current = salmonTab
+      ? {
+          dest: salmonTab.dest,
+          stops: stopsView,
+          recommendation: rec,
+          altViaGangnam: salmonTab.altViaGangnam,
+          destination: destStop
+            ? {
+                name: destStop.name,
+                rideMin: recRide?.min ?? null,
+                rideEstimated: recRide?.est ?? null,
+              }
+            : null,
+        }
+      : null;
+  });
+
   const retry = () => {
     setError(null);
     if (routes === null) loadRoutes();
@@ -414,7 +444,31 @@ export default function Home() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-[430px] flex-1 px-4 pb-10 pt-3 lg:max-w-[1080px]">
+    // pb-24: 하단 고정 설치 배너가 콘텐츠를 가리지 않도록 여유
+    <main
+      className="mx-auto w-full max-w-[430px] flex-1 px-4 pb-24 pt-3 lg:max-w-[1080px]"
+      onTouchStart={(e) => {
+        if (window.scrollY <= 0) pullStart.current = e.touches[0].clientY;
+      }}
+      onTouchMove={(e) => {
+        if (pullStart.current === null) return;
+        const dy = e.touches[0].clientY - pullStart.current;
+        setPull(dy > 0 && window.scrollY <= 0 ? Math.min(Math.round(dy / 2), 80) : 0);
+      }}
+      onTouchEnd={() => {
+        if (pull >= 55) setRefreshKey((k) => k + 1);
+        pullStart.current = null;
+        setPull(0);
+      }}
+    >
+      {pull > 0 && (
+        <div
+          style={{ height: pull }}
+          className="flex items-end justify-center overflow-hidden pb-1"
+        >
+          <SalmonMini width={24} className={pull >= 55 ? "" : "opacity-40"} />
+        </div>
+      )}
       <header className="flex items-center gap-3 px-1">
         <span className="yn-bob shrink-0">
           <Salmon width={42} />
@@ -967,11 +1021,11 @@ function StationPicker({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40"
+      className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 lg:justify-center"
       onClick={onClose}
     >
       <div
-        className="mx-auto flex max-h-[75vh] w-full max-w-[430px] flex-col gap-3 rounded-t-[24px] bg-surface p-5 pb-8"
+        className="mx-auto flex max-h-[75vh] w-full max-w-[430px] flex-col gap-3 rounded-t-[24px] bg-surface p-5 pb-8 lg:max-h-[60vh] lg:max-w-[520px] lg:rounded-[24px] lg:pb-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">

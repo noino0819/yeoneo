@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { HOME_STOP, type Destination } from "@/constants/stops";
+import { AVG_BUS_KMH, HOME_STOP, type Destination } from "@/constants/stops";
 import type { Arrival } from "@/lib/ggbus";
 import type { TaggedRoute } from "@/app/api/routes/route";
 import type { SalmonResponse } from "@/app/api/salmon/route";
@@ -28,10 +28,41 @@ const seatGrade = (n: number | null): Grade | null =>
 
 const seatText = (n: number | null) => (n === null || n < 0 ? "—" : `${n}석`);
 
-// 정류장 좌표 — 내 위치 기반 도보시간(연어 UI.dc 3a "지금 출발" 타이밍)에 사용
-const STOP_COORDS: Record<string, { lat: number; lng: number }> = Object.fromEntries(
-  [HOME_STOP, ...HOME_STOP.upstream].map((s) => [s.stationId, { lat: s.lat, lng: s.lng }]),
-);
+// 출발/도착 정류장 선택
+interface PickedStop {
+  stationId: string;
+  name: string;
+  lat: number;
+  lng: number;
+}
+const DEFAULT_ORIGIN: PickedStop = {
+  stationId: HOME_STOP.stationId,
+  name: HOME_STOP.name,
+  lat: HOME_STOP.lat,
+  lng: HOME_STOP.lng,
+};
+
+interface ViaInfo {
+  stationId: string;
+  km: number;
+}
+
+// 도착 정류장까지 버스 승차시간.
+// 1) 같은 차량(plateNo)이 양쪽 도착예정에 있으면 그 차이 = 정확값.
+// 2) 아니면(GBIS는 정류장당 다음 2대만 노출) 경로 거리 ÷ 평균 영업속도로 추정.
+function rideMin(
+  o: Arrival | null,
+  d: Arrival | undefined,
+  v: ViaInfo,
+): { min: number; est: boolean } | null {
+  if (!o || o.predictTime1 == null) return null;
+  if (d?.plateNo1 && d.plateNo1 === o.plateNo1 && d.predictTime1 != null)
+    return { min: d.predictTime1 - o.predictTime1, est: false };
+  if (d?.plateNo2 && d.plateNo2 === o.plateNo1 && d.predictTime2 != null)
+    return { min: d.predictTime2 - o.predictTime1, est: false };
+  if (v.km > 0) return { min: Math.round((v.km / AVG_BUS_KMH) * 60), est: true };
+  return null;
+}
 
 export default function Home() {
   const [routes, setRoutes] = useState<TaggedRoute[] | null>(null);
@@ -45,8 +76,42 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(null);
   const [geoPrompt, setGeoPrompt] = useState(false);
-  const salmonRef = useRef<SalmonResponse | null>(null);
+  const [origin, setOrigin] = useState<PickedStop>(DEFAULT_ORIGIN);
+  const [destStop, setDestStop] = useState<PickedStop | null>(null);
+  const [picker, setPicker] = useState<"origin" | "dest" | null>(null);
+  // destVia: routeId → 그 노선의 도착 정류장 정보 (경유 안 하면 없음)
+  const [destVia, setDestVia] = useState<Record<string, ViaInfo> | null>(null);
+  // destArrivals: `${routeId}@${stationId}` → 도착 정류장 도착예정
+  const [destArrivals, setDestArrivals] = useState<Map<string, Arrival>>(new Map());
+  const briefRef = useRef<Pick<
+    SalmonResponse,
+    "dest" | "stops" | "recommendation" | "altViaGangnam"
+  > | null>(null);
   const replayIdx = useRef(0);
+
+  const pickOrigin = (st: PickedStop) => {
+    setOrigin(st);
+    localStorage.setItem("yn-origin", JSON.stringify(st));
+    setPicker(null);
+    // 정류장이 바뀌면 이전 데이터 리셋 → 스켈레톤부터 다시
+    setRoutes(null);
+    setArrivals(new Map());
+    setSalmon(null);
+    briefRef.current = null;
+    setBriefing(null);
+    setUpdatedAt(null);
+    setError(null);
+    setReplay(false);
+  };
+
+  const pickDest = (st: PickedStop | null) => {
+    setDestStop(st);
+    if (st) localStorage.setItem("yn-dest", JSON.stringify(st));
+    else localStorage.removeItem("yn-dest");
+    setPicker(null);
+    setDestArrivals(new Map());
+    setDestVia(null);
+  };
 
   const locate = useCallback(() => {
     navigator.geolocation?.getCurrentPosition(
@@ -63,26 +128,33 @@ export default function Home() {
     );
   }, []);
 
-  // 위치: 이전에 허용했으면 조용히 갱신, 처음이면 카드로 물어봄
+  // 저장된 선택 복원 + 위치: 이전에 허용했으면 조용히 갱신, 처음이면 카드로 물어봄
   // (localStorage는 SSR에 없어 hydration 후 effect에서 읽어야 함)
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
+    try {
+      const o = localStorage.getItem("yn-origin");
+      if (o) setOrigin(JSON.parse(o));
+      const d = localStorage.getItem("yn-dest");
+      if (d) setDestStop(JSON.parse(d));
+    } catch {}
     const pref = localStorage.getItem("yn-geo");
     if (pref === "on") locate();
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     else if (pref === null) setGeoPrompt(true);
   }, [locate]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const loadRoutes = useCallback(() => {
-    fetch(`/api/routes?stationId=${HOME_STOP.stationId}`)
+    fetch(`/api/routes?stationId=${origin.stationId}`)
       .then((r) => r.json())
       .then((d) => setRoutes(d.routes ?? []))
       .catch(() => setError("노선 정보를 불러오지 못했습니다"));
-  }, []);
+  }, [origin.stationId]);
 
   useEffect(loadRoutes, [loadRoutes]);
 
   const poll = useCallback(() => {
-    fetch(`/api/arrivals?stationId=${HOME_STOP.stationId}`)
+    fetch(`/api/arrivals?stationId=${origin.stationId}`)
       .then((r) => r.json())
       .then((d) => {
         if (d.error) throw new Error(d.error);
@@ -91,7 +163,7 @@ export default function Home() {
         setError(null);
       })
       .catch(() => setError("도착 정보를 불러오지 못했습니다"));
-  }, []);
+  }, [origin.stationId]);
 
   // 라이브: 도착정보 폴링
   useEffect(() => {
@@ -106,12 +178,13 @@ export default function Home() {
     if (replay) return;
     let dead = false;
     const run = () =>
-      fetch(`/api/salmon?dest=${tab}`)
+      fetch(
+        `/api/salmon?dest=${tab}&stationId=${origin.stationId}&name=${encodeURIComponent(origin.name)}&lat=${origin.lat}&lng=${origin.lng}`,
+      )
         .then((r) => r.json())
         .then((d) => {
           if (dead || d.error) return;
           setSalmon(d);
-          salmonRef.current = d;
         })
         .catch(() => {});
     run();
@@ -120,7 +193,54 @@ export default function Home() {
       dead = true;
       clearInterval(id);
     };
-  }, [tab, replay]);
+  }, [tab, replay, origin]);
+
+  // 도착 정류장: 노선 경유목록 기준으로 어느 노선이 지나는지 + 노선별 도착 stationId
+  useEffect(() => {
+    if (!destStop) return;
+    let dead = false;
+    fetch(
+      `/api/via?originId=${origin.stationId}&destId=${destStop.stationId}&lat=${destStop.lat}&lng=${destStop.lng}`,
+    )
+      .then((r) => r.json())
+      .then((d) => {
+        if (!dead && d.via) setDestVia(d.via);
+      })
+      .catch(() => {});
+    return () => {
+      dead = true;
+    };
+  }, [destStop, origin.stationId]);
+
+  // 도착 정류장 도착예정 폴링 (승차시간 계산용) — 노선별 도착 stationId 단위
+  useEffect(() => {
+    if (!destStop || !destVia) return;
+    const ids = [...new Set(Object.values(destVia).map((v) => v.stationId))];
+    if (ids.length === 0) return;
+    let dead = false;
+    const run = () =>
+      Promise.all(
+        ids.map((id) =>
+          fetch(`/api/arrivals?stationId=${id}`)
+            .then((r) => r.json())
+            .then((d) => [id, (d.arrivals ?? []) as Arrival[]] as const),
+        ),
+      )
+        .then((all) => {
+          if (dead) return;
+          const m = new Map<string, Arrival>();
+          for (const [id, arr] of all)
+            for (const a of arr) m.set(`${a.routeId}@${id}`, a);
+          setDestArrivals(m);
+        })
+        .catch(() => {});
+    run();
+    const id = setInterval(run, POLL_MS);
+    return () => {
+      dead = true;
+      clearInterval(id);
+    };
+  }, [destStop, destVia]);
 
   // 리플레이: fixture 스냅샷 재생 (예측 로직은 라이브와 동일)
   useEffect(() => {
@@ -134,7 +254,6 @@ export default function Home() {
           setArrivals(new Map(d.arrivals.map((a) => [a.routeId, a])));
           const s = { ...d.salmon, generatedAt: Date.parse(d.t) };
           setSalmon(s);
-          salmonRef.current = s;
           setReplayT(d.t);
           setUpdatedAt(new Date(d.t));
           replayIdx.current = (d.index + 1) % d.total;
@@ -152,7 +271,7 @@ export default function Home() {
   useEffect(() => {
     let dead = false;
     const run = () => {
-      const s = salmonRef.current;
+      const s = briefRef.current;
       if (!s || s.dest !== tab) return;
       fetch("/api/briefing", {
         method: "POST",
@@ -191,8 +310,15 @@ export default function Home() {
     };
   }, [tab]);
 
+  // 도착 정류장을 지나는 방면 노선이 하나도 없으면 필터 대신 안내만 (반대편 정류장 선택 등)
+  const destMiss =
+    destStop !== null && destVia !== null && Object.keys(destVia).length === 0;
   const tabRoutes = (routes ?? [])
-    .filter((r) => r.dest === tab)
+    // 도착 정류장을 정했으면 그 정류장을 경유하는 노선만
+    .filter(
+      (r) =>
+        r.dest === tab && (!destStop || !destVia || destMiss || destVia[r.routeId]),
+    )
     .map((r) => ({ route: r, arrival: arrivals.get(r.routeId) ?? null }))
     .sort(
       (a, b) =>
@@ -200,53 +326,86 @@ export default function Home() {
     );
 
   const salmonTab = salmon?.dest === tab ? salmon : null;
-  const rec = salmonTab?.recommendation ?? null;
-  // 홈 정류장의 노선별 예측 — 정류장 보드 카드의 탑승 확률 바에 사용
+  // 도착 필터가 있으면 연어 모드/추천도 그 정류장을 지나는 노선만으로 재구성
+  const destNameOk =
+    destStop && destVia && !destMiss
+      ? new Set(tabRoutes.map((t) => t.route.routeName))
+      : null;
+  const stopsView = salmonTab
+    ? destNameOk
+      ? salmonTab.stops.map((s) => {
+          const buses = s.buses.filter((b) => destNameOk.has(b.routeName));
+          return { ...s, buses, best: buses[0] ?? null }; // buses는 commuteMin 오름차순
+        })
+      : salmonTab.stops
+    : [];
+  const rec = (() => {
+    if (!salmonTab) return null;
+    if (!destNameOk) return salmonTab.recommendation;
+    const withBest = stopsView.filter((s) => s.best);
+    if (withBest.length === 0) return null;
+    const rs = withBest.reduce((a, b) =>
+      a.best!.commuteMin <= b.best!.commuteMin ? a : b,
+    );
+    return { ...rs.best!, stopName: rs.name, walkMin: rs.walkMin };
+  })();
+  // 출발 정류장의 노선별 예측 — 정류장 보드 카드의 탑승 확률 바에 사용
   const homePlans = new Map(
-    (salmonTab?.stops[0]?.buses ?? []).map((b) => [b.routeName, b]),
+    (stopsView[0]?.buses ?? []).map((b) => [b.routeName, b]),
   );
-  const homeBest = salmonTab?.stops[0]?.best ?? null;
+  const homeBest = stopsView[0]?.best ?? null;
   const saving =
-    rec && homeBest && rec.stopName !== HOME_STOP.name
+    rec && homeBest && rec.stopName !== origin.name
       ? Math.round(homeBest.commuteMin - rec.commuteMin)
       : null;
-  const riverStops = salmonTab ? [...salmonTab.stops].reverse() : [];
+  const riverStops = [...stopsView].reverse();
 
   // 위치 켜짐: 정류장별 실제 도보시간으로 기대 통근(도보+대기)을 재계산해 재추천.
   // 서버 wait = commuteMin - 정적 walkMin (확률 기반 기대 대기) — 같은 버스면 도착시각이
   // 동일하므로 승차시간은 비교에 영향 없음.
-  const myPlans =
-    geo && salmonTab
-      ? new Map(
-          salmonTab.stops.map((s) => {
-            const c = STOP_COORDS[s.stationId];
-            const walk = c ? walkMinutes(geo, c) : s.walkMin;
-            const wait = s.best ? Math.max(s.best.commuteMin - s.walkMin, 0) : null;
-            return [s.stationId, { walk, total: wait === null ? null : walk + wait }];
-          }),
-        )
-      : null;
-  const myRecStop =
-    myPlans && salmonTab
-      ? (salmonTab.stops
-          .filter((s) => s.best && myPlans.get(s.stationId)?.total != null)
-          .sort(
-            (a, b) =>
-              myPlans.get(a.stationId)!.total! - myPlans.get(b.stationId)!.total!,
-          )[0] ?? null)
-      : null;
+  const myPlans = geo
+    ? new Map(
+        stopsView.map((s) => {
+          const walk =
+            s.lat && s.lng ? walkMinutes(geo, { lat: s.lat, lng: s.lng }) : s.walkMin;
+          const wait = s.best ? Math.max(s.best.commuteMin - s.walkMin, 0) : null;
+          return [s.stationId, { walk, total: wait === null ? null : walk + wait }];
+        }),
+      )
+    : null;
+  const myRecStop = myPlans
+    ? (stopsView
+        .filter((s) => s.best && myPlans.get(s.stationId)?.total != null)
+        .sort(
+          (a, b) =>
+            myPlans.get(a.stationId)!.total! - myPlans.get(b.stationId)!.total!,
+        )[0] ?? null)
+    : null;
   const myRecPlan = myRecStop ? (myPlans?.get(myRecStop.stationId) ?? null) : null;
   // 표시용 추천: 위치 기준이 있으면 그걸로, 없으면 서버(집 기준) 추천
   const dispRec = myRecStop?.best
     ? { ...myRecStop.best, stopName: myRecStop.name, walkMin: myRecPlan!.walk }
     : rec;
   const myHomePlan =
-    myPlans && salmonTab ? (myPlans.get(salmonTab.stops[0].stationId) ?? null) : null;
+    myPlans && stopsView.length ? (myPlans.get(stopsView[0].stationId) ?? null) : null;
   const mySaving =
-    myRecStop && salmonTab && myRecStop.stationId !== salmonTab.stops[0].stationId &&
+    myRecStop && stopsView.length && myRecStop.stationId !== stopsView[0].stationId &&
     myHomePlan?.total != null && myRecPlan?.total != null
       ? Math.round(myHomePlan.total - myRecPlan.total)
       : null;
+
+  // 도착 정류장까지 승차시간 (추천 노선 기준, 출발 정류장 도착예정으로 근사)
+  const recRide = (() => {
+    if (!destStop || !dispRec) return null;
+    const r = tabRoutes.find((t) => t.route.routeName === dispRec.routeName);
+    const v = r && destVia?.[r.route.routeId];
+    if (!r || !v) return null;
+    return rideMin(
+      arrivals.get(r.route.routeId) ?? null,
+      destArrivals.get(`${r.route.routeId}@${v.stationId}`),
+      v,
+    );
+  })();
 
   const retry = () => {
     setError(null);
@@ -267,19 +426,33 @@ export default function Home() {
               만석이면, 거슬러 오르세요
             </span>
           </div>
-          <p className="mt-0.5 truncate text-[13px] font-medium text-muted">
-            {HOME_STOP.name} → 서울 방면
-          </p>
+          <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[13px] font-medium text-muted">
+            <button
+              onClick={() => setPicker("origin")}
+              className="min-w-0 truncate underline decoration-line decoration-dotted underline-offset-[3px]"
+            >
+              {origin.name}
+            </button>
+            <span aria-hidden>→</span>
+            <button
+              onClick={() => setPicker("dest")}
+              className={`min-w-0 truncate underline decoration-line decoration-dotted underline-offset-[3px] ${destStop ? "" : "text-faint"}`}
+            >
+              {destStop?.name ?? "서울 방면"}
+            </button>
+          </div>
         </div>
-        <button
-          onClick={() => {
-            replayIdx.current = 0;
-            setReplay(!replay);
-          }}
-          className="shrink-0 rounded-full border-[1.5px] border-line bg-surface px-3 py-1.5 text-xs font-bold text-accent-deep"
-        >
-          {replay ? "실시간" : "리플레이"}
-        </button>
+        {origin.stationId === HOME_STOP.stationId && (
+          <button
+            onClick={() => {
+              replayIdx.current = 0;
+              setReplay(!replay);
+            }}
+            className="shrink-0 rounded-full border-[1.5px] border-line bg-surface px-3 py-1.5 text-xs font-bold text-accent-deep"
+          >
+            {replay ? "실시간" : "리플레이"}
+          </button>
+        )}
         <button
           onClick={() => {
             const el = document.documentElement;
@@ -380,6 +553,12 @@ export default function Home() {
             <EmptyCard replay={replay} onReplay={() => setReplay(true)} />
           ) : (
             <>
+              {destMiss && destStop && (
+                <p className="rounded-[14px] bg-info-soft px-3.5 py-2.5 text-xs font-semibold text-info">
+                  {destStop.name}을(를) 지나는 이 방면 노선이 없어요 — 건너편·다른
+                  이름의 정류장인지 확인해 주세요
+                </p>
+              )}
               {error && !replay && (
                 <p className="rounded-[14px] bg-bad-soft px-3.5 py-2.5 text-xs font-semibold text-bad">
                   {error} — 마지막으로 받은 정보를 표시 중이에요
@@ -391,7 +570,18 @@ export default function Home() {
                   const plan = homePlans.get(route.routeName);
                   const seats = arrival?.remainSeatCnt1 ?? null;
                   const sGrade = seatGrade(seats);
+                  const v = destStop ? destVia?.[route.routeId] : undefined;
+                  const ride = v
+                    ? rideMin(
+                        arrival,
+                        destArrivals.get(`${route.routeId}@${v.stationId}`),
+                        v,
+                      )
+                    : null;
                   const sub = [
+                    ride !== null &&
+                      ride.min > 0 &&
+                      `${destStop!.name}까지 버스 ${ride.est ? "약 " : ""}${ride.min}분${ride.est ? " (추정)" : ""}`,
                     arrival?.stationNm1 &&
                       `현재 ${arrival.stationNm1} (${arrival.locationNo1}정거장 전)`,
                     arrival?.predictTime2 != null &&
@@ -667,7 +857,7 @@ export default function Home() {
               {myPlans && mySaving !== null && mySaving > 0 && dispRec ? (
                 <p className="mt-3 rounded-xl bg-bg px-3 py-2.5 text-xs font-semibold text-muted">
                   내 위치 기준 — {dispRec.walkMin}분 걸어 {dispRec.stopName}에서 타면{" "}
-                  {HOME_STOP.name} 대기보다{" "}
+                  {origin.name} 대기보다{" "}
                   <b className="text-accent-deep">약 {mySaving}분 단축</b> (예측치)
                 </p>
               ) : !myPlans && saving !== null && saving > 0 && rec ? (
@@ -682,7 +872,7 @@ export default function Home() {
                   <span className="yn-pulse mt-1 h-2 w-2 shrink-0 rounded-full bg-[#7FD6A8]" />
                   <div className="flex flex-col gap-1">
                     <span className="text-[12.5px] font-bold text-[#EAF2F9]">
-                      {dispRec.stopName === HOME_STOP.name && !myPlans
+                      {dispRec.stopName === origin.name && !myPlans
                         ? "지금 이 정류장"
                         : `${dispRec.stopName} (도보 ${dispRec.walkMin}분)`}
                       에서 <b className="text-[#FFB09B]">{dispRec.routeName}</b> ·{" "}
@@ -709,6 +899,18 @@ export default function Home() {
                         )}
                       </span>
                     )}
+                    {recRide !== null && recRide.min > 0 && destStop && (
+                      <span className="text-xs font-semibold text-[#C6D8E6]">
+                        {destStop.name}까지 버스 {recRide.est ? "약 " : ""}
+                        {recRide.min}분 · 지금부터 도착까지 총 ~
+                        <b className="text-[#7FD6A8]">
+                          {(myRecPlan
+                            ? Math.max(dispRec.eta, myRecPlan.walk)
+                            : dispRec.eta) + recRide.min}
+                          분
+                        </b>
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
@@ -720,7 +922,116 @@ export default function Home() {
       <p className="mt-6 text-center text-[11.5px] font-medium text-faint/80">
         오늘도 거슬러 오르는 모든 연어들을 위하여
       </p>
+
+      {picker && (
+        <StationPicker
+          title={picker === "origin" ? "출발 정류장 검색" : "도착 정류장 검색"}
+          allowClear={picker === "dest" && destStop !== null}
+          onClear={() => pickDest(null)}
+          onSelect={(st) => (picker === "origin" ? pickOrigin(st) : pickDest(st))}
+          onClose={() => setPicker(null)}
+        />
+      )}
     </main>
+  );
+}
+
+function StationPicker({
+  title,
+  allowClear,
+  onClear,
+  onSelect,
+  onClose,
+}: {
+  title: string;
+  allowClear: boolean;
+  onClear: () => void;
+  onSelect: (st: PickedStop) => void;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const [items, setItems] = useState<
+    (PickedStop & { region: string; mobileNo: string })[] | null
+  >(null);
+
+  useEffect(() => {
+    if (q.trim().length < 2) return;
+    const id = setTimeout(() => {
+      fetch(`/api/stations?q=${encodeURIComponent(q.trim())}`)
+        .then((r) => r.json())
+        .then((d) => setItems(d.stations ?? []))
+        .catch(() => setItems([]));
+    }, 300);
+    return () => clearTimeout(id);
+  }, [q]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40"
+      onClick={onClose}
+    >
+      <div
+        className="mx-auto flex max-h-[75vh] w-full max-w-[430px] flex-col gap-3 rounded-t-[24px] bg-surface p-5 pb-8"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <b className="text-base font-extrabold">{title}</b>
+          <button onClick={onClose} className="text-sm font-bold text-faint">
+            닫기
+          </button>
+        </div>
+        <input
+          autoFocus
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setItems(null);
+          }}
+          placeholder="정류장 이름 (2글자 이상)"
+          className="rounded-xl border border-line bg-bg px-4 py-3 text-sm font-medium text-ink outline-none focus:border-accent"
+        />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {allowClear && (
+            <button
+              onClick={onClear}
+              className="w-full border-b border-line py-3 text-left text-sm font-bold text-bad"
+            >
+              도착 정류장 지정 해제
+            </button>
+          )}
+          {items === null ? (
+            <p className="py-6 text-center text-xs font-medium text-faint">
+              {q.trim().length >= 2 ? "찾는 중…" : "정류장 이름으로 검색하세요"}
+            </p>
+          ) : items.length === 0 ? (
+            <p className="py-6 text-center text-xs font-medium text-faint">
+              검색 결과가 없어요
+            </p>
+          ) : (
+            items.map((s) => (
+              <button
+                key={`${s.stationId}-${s.mobileNo}`}
+                onClick={() =>
+                  onSelect({
+                    stationId: s.stationId,
+                    name: s.name,
+                    lat: s.lat,
+                    lng: s.lng,
+                  })
+                }
+                className="block w-full border-b border-line py-3 text-left last:border-0"
+              >
+                <span className="block text-sm font-bold text-ink">{s.name}</span>
+                <span className="block text-xs font-medium text-faint">
+                  {s.region}
+                  {s.mobileNo && ` · ${s.mobileNo}`}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

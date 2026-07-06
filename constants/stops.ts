@@ -72,5 +72,9 @@ export const PREDICT_COEF = {
 // F3 강북행 대안 카드용 환승 근사치 (분) — v1은 정적 추정치, UI에 "추정" 명시
 export const TRANSFER_PENALTY_MIN = 25;
 
+// 도착 정류장까지 승차시간 추정용 광역버스 평균 영업속도(km/h)
+// ponytail: 고정 상수 근사 — 출근 녹화로 노선·시간대별 실측 튜닝 예정
+export const AVG_BUS_KMH = 45;
+
 // 리플레이 모드 기본 fixture (fixtures/<이름>.json) — 출근시간 녹화 후 rush-YYYYMMDD로 교체
 export const REPLAY_FILE = "dev-sample";

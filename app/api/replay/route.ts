@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
-import { buildSalmon, type SalmonData } from "@/lib/salmon";
+import { buildSalmon, STOP_CHAIN, type SalmonData } from "@/lib/salmon";
 import { HOME_STOP, REPLAY_FILE, type Destination } from "@/constants/stops";
 import type { Arrival } from "@/lib/ggbus";
 
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
       total: snapshots.length,
       t: snap.t,
       arrivals: snap.stations[HOME_STOP.stationId] ?? [],
-      salmon: buildSalmon(snap.stations, dest, hour),
+      salmon: buildSalmon(STOP_CHAIN, snap.stations, dest, hour),
     };
     return NextResponse.json(body);
   } catch (e) {

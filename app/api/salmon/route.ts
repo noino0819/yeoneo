@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getArrivals, type Arrival } from "@/lib/ggbus";
-import { buildSalmon, kstHour, STOP_CHAIN, type SalmonData } from "@/lib/salmon";
-import type { Destination } from "@/constants/stops";
+import { buildSalmon, chainForStation, kstHour, type SalmonData } from "@/lib/salmon";
+import { HOME_STOP, type Destination } from "@/constants/stops";
 
-// F2+F3 라이브: HOME + 상류 정류장 동시 예측·비교 (연어 모드)
+// F2+F3 라이브: 출발 정류장 + 상류 정류장 동시 예측·비교 (연어 모드)
 export type SalmonResponse = SalmonData & { generatedAt: number };
 
 const cache = new Map<string, { at: number; data: Arrival[] }>();
@@ -18,15 +18,23 @@ async function cachedArrivals(stationId: string): Promise<Arrival[]> {
 }
 
 export async function GET(req: NextRequest) {
-  const dest = (req.nextUrl.searchParams.get("dest") ?? "gangnam") as Destination;
+  const q = req.nextUrl.searchParams;
+  const dest = (q.get("dest") ?? "gangnam") as Destination;
+  const origin = {
+    stationId: q.get("stationId") ?? HOME_STOP.stationId,
+    name: q.get("name") ?? HOME_STOP.name,
+    lat: Number(q.get("lat")) || HOME_STOP.lat,
+    lng: Number(q.get("lng")) || HOME_STOP.lng,
+  };
   try {
+    const chain = await chainForStation(origin, dest);
     const arrivalsByStation = Object.fromEntries(
       await Promise.all(
-        STOP_CHAIN.map(async (s) => [s.stationId, await cachedArrivals(s.stationId)]),
+        chain.map(async (s) => [s.stationId, await cachedArrivals(s.stationId)]),
       ),
     );
     const body: SalmonResponse = {
-      ...buildSalmon(arrivalsByStation, dest, kstHour()),
+      ...buildSalmon(chain, arrivalsByStation, dest, kstHour()),
       generatedAt: Date.now(),
     };
     return NextResponse.json(body);

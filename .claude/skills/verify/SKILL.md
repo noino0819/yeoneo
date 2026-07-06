@@ -28,3 +28,8 @@ description: 연어 앱 변경을 실제로 띄워서 눈으로 확인하는 레
 
 ## 위치 기능 검증
 puppeteer: `ctx.overridePermissions(origin, ["geolocation"])` + `page.setGeolocation({latitude, longitude})` 후 "위치 허용" 버튼 클릭 → 추천 밴드에 "내 위치에서 도보 N분" 라인 확인. localStorage 키 `yn-geo` (on/off).
+
+## 출발·도착 정류장 검증
+- `/api/stations?q=키워드` 검색, `/api/via?originId=&destId=&lat=&lng=` 노선 경유 판정(좌표 250m 매칭)
+- GBIS 정류장 검색은 응답이 수 초 걸릴 수 있음 — puppeteer는 waitForFunction으로 결과 버튼 등장을 기다릴 것 (고정 sleep은 플레이크)
+- 동명 쌍둥이 정류장(방향별 stationId 상이) 주의: 도착 매칭은 via가 좌표로 해결하지만 출발은 사용자가 mobileNo로 구분해야 함

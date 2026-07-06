@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import InstallPrompt from "./install-prompt";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://yeoneo.vercel.app"),
@@ -35,6 +36,7 @@ export default function RootLayout({
           href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
         />
         {children}
+        <InstallPrompt />
       </body>
     </html>
   );

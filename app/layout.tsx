@@ -1,21 +1,16 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "연어 — 광역버스 통근 비서",
+  metadataBase: new URL("https://yeoneo.vercel.app"),
+  title: "연어 — 광역버스 탑승 확률 예측",
   description:
-    "실시간 잔여좌석과 AI 예측으로 지금 어느 정류장에서 어떤 버스를 타야 하는지 알려드립니다.",
+    "지금 오는 그 버스, 탈 수 있을까? 실시간 잔여좌석과 AI 예측으로 어느 정류장에서 타야 할지 알려드려요.",
+  openGraph: {
+    title: "연어 — 광역버스 탑승 확률 예측",
+    description:
+      "지금 오는 그 버스, 탈 수 있을까? 실시간 잔여좌석과 AI 예측으로 어느 정류장에서 타야 할지 알려드려요.",
+  },
 };
 
 export default function RootLayout({
@@ -24,11 +19,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="ko"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="ko" className="h-full antialiased">
+      <body className="min-h-full flex flex-col">
+        <link
+          rel="stylesheet"
+          precedence="default"
+          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
+        />
+        {children}
+      </body>
     </html>
   );
 }

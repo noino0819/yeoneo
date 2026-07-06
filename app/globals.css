@@ -1,26 +1,136 @@
 @import "tailwindcss";
 
+/* 연어 UI.dc — 1a 선셋 새먼(라이트) / 1b 딥 리버(다크) 팔레트 */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --bg: #fbf1eb;
+  --surface: #ffffff;
+  --ink: #26221f;
+  --muted: #6b615b;
+  --faint: #a39288;
+  --line: #f3ddd2;
+  --accent: #f97862;
+  --accent-deep: #e05a43;
+  --accent-soft: #fee7dd;
+  --on-accent: #ffffff;
+  --track: #f3e2d7;
+  --ok: #1e9e6a;
+  --warn: #e8a13a;
+  --bad: #e25545;
+  --bad-soft: #fdebe9;
+  --info: #2e6fa3;
+  --info-soft: #e7f0f7;
+  --river: #14324b;
+  --river-a: #bfd7ea;
+  --river-b: #e7f0f7;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg: #0e1b27;
+    --surface: #16283a;
+    --ink: #f2ede8;
+    --muted: #9fb2c2;
+    --faint: #7e93a6;
+    --line: rgba(255, 255, 255, 0.1);
+    --accent: #ff8a70;
+    --accent-deep: #ff8a70;
+    --accent-soft: rgba(255, 138, 112, 0.12);
+    --on-accent: #251512;
+    --track: rgba(255, 255, 255, 0.08);
+    --ok: #4fc48f;
+    --warn: #efb65b;
+    --bad: #e9705f;
+    --bad-soft: rgba(233, 112, 95, 0.12);
+    --info: #6fa8d6;
+    --info-soft: rgba(111, 168, 214, 0.12);
+    --river: #1b3348;
+    --river-a: #2c4a66;
+    --river-b: #1b3348;
   }
 }
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-deep: var(--accent-deep);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
+  --color-track: var(--track);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-river: var(--river);
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, sans-serif;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+@keyframes yn-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes yn-swim {
+  0% { transform: translateX(0) scaleX(-1); }
+  45% { transform: translateX(26px) scaleX(-1); }
+  50% { transform: translateX(26px) scaleX(1); }
+  95% { transform: translateX(0) scaleX(1); }
+  100% { transform: translateX(0) scaleX(-1); }
+}
+@keyframes yn-upstream {
+  0% { left: calc(100% - 30px); opacity: 0; }
+  10% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { left: 0px; opacity: 0; }
+}
+@keyframes yn-fill {
+  from { width: 0; }
+}
+@keyframes yn-fadeup {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes yn-dash {
+  to { background-position-x: -24px; }
+}
+@keyframes yn-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(249, 120, 98, 0.45); }
+  100% { box-shadow: 0 0 0 9px rgba(249, 120, 98, 0); }
+}
+@keyframes yn-shimmer {
+  0% { background-position-x: 150%; }
+  100% { background-position-x: -50%; }
+}
+
+.yn-bob { animation: yn-bob 2.6s ease-in-out infinite; }
+.yn-swim { animation: yn-swim 3.2s linear infinite; }
+.yn-upstream { animation: yn-upstream 5.5s ease-in-out infinite; }
+.yn-pulse { animation: yn-pulse 1.8s ease-out infinite; }
+.yn-fadeup { animation: yn-fadeup 0.5s ease backwards; }
+.yn-fill { animation: yn-fill 1.1s 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+
+.river-track {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--river-a) 0 10px,
+    var(--river-b) 10px 20px
+  );
+  animation: yn-dash 1.4s linear infinite;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--track) 25%, var(--accent-soft) 50%, var(--track) 75%);
+  background-size: 200% 100%;
+  animation: yn-shimmer 1.6s linear infinite;
 }

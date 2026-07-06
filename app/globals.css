@@ -24,9 +24,9 @@
   --river-b: #e7f0f7;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0e1b27;
+/* 다크는 명시적 opt-in (헤더 토글, localStorage yn-theme) — 기본은 라이트 */
+:root[data-theme="dark"] {
+  --bg: #0e1b27;
     --surface: #16283a;
     --ink: #f2ede8;
     --muted: #9fb2c2;
@@ -43,10 +43,35 @@
     --bad-soft: rgba(233, 112, 95, 0.12);
     --info: #6fa8d6;
     --info-soft: rgba(111, 168, 214, 0.12);
-    --river: #1b3348;
-    --river-a: #2c4a66;
-    --river-b: #1b3348;
-  }
+  --river: #1b3348;
+  --river-a: #2c4a66;
+  --river-b: #1b3348;
+}
+
+:root {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+/* 테마 토글 — React 상태 없이 CSS로 전환 (hydration 안전) */
+:root[data-theme="dark"] .dark-hide {
+  display: none;
+}
+:root:not([data-theme="dark"]) .dark-show {
+  display: none;
+}
+.theme-toggle {
+  transition: background-color 0.25s ease;
+}
+:root[data-theme="dark"] .theme-toggle {
+  background: var(--river);
+}
+.theme-knob {
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+:root[data-theme="dark"] .theme-knob {
+  transform: translateX(20px);
 }
 
 @theme inline {

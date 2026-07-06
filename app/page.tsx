@@ -211,10 +211,41 @@ export default function Home() {
       ? Math.round(homeBest.commuteMin - rec.commuteMin)
       : null;
   const riverStops = salmonTab ? [...salmonTab.stops].reverse() : [];
-  const recStop = rec ? salmonTab?.stops.find((s) => s.name === rec.stopName) : null;
-  const myWalk =
-    geo && recStop && STOP_COORDS[recStop.stationId]
-      ? walkMinutes(geo, STOP_COORDS[recStop.stationId])
+
+  // 위치 켜짐: 정류장별 실제 도보시간으로 기대 통근(도보+대기)을 재계산해 재추천.
+  // 서버 wait = commuteMin - 정적 walkMin (확률 기반 기대 대기) — 같은 버스면 도착시각이
+  // 동일하므로 승차시간은 비교에 영향 없음.
+  const myPlans =
+    geo && salmonTab
+      ? new Map(
+          salmonTab.stops.map((s) => {
+            const c = STOP_COORDS[s.stationId];
+            const walk = c ? walkMinutes(geo, c) : s.walkMin;
+            const wait = s.best ? Math.max(s.best.commuteMin - s.walkMin, 0) : null;
+            return [s.stationId, { walk, total: wait === null ? null : walk + wait }];
+          }),
+        )
+      : null;
+  const myRecStop =
+    myPlans && salmonTab
+      ? (salmonTab.stops
+          .filter((s) => s.best && myPlans.get(s.stationId)?.total != null)
+          .sort(
+            (a, b) =>
+              myPlans.get(a.stationId)!.total! - myPlans.get(b.stationId)!.total!,
+          )[0] ?? null)
+      : null;
+  const myRecPlan = myRecStop ? (myPlans?.get(myRecStop.stationId) ?? null) : null;
+  // 표시용 추천: 위치 기준이 있으면 그걸로, 없으면 서버(집 기준) 추천
+  const dispRec = myRecStop?.best
+    ? { ...myRecStop.best, stopName: myRecStop.name, walkMin: myRecPlan!.walk }
+    : rec;
+  const myHomePlan =
+    myPlans && salmonTab ? (myPlans.get(salmonTab.stops[0].stationId) ?? null) : null;
+  const mySaving =
+    myRecStop && salmonTab && myRecStop.stationId !== salmonTab.stops[0].stationId &&
+    myHomePlan?.total != null && myRecPlan?.total != null
+      ? Math.round(myHomePlan.total - myRecPlan.total)
       : null;
 
   const retry = () => {
@@ -248,6 +279,43 @@ export default function Home() {
           className="shrink-0 rounded-full border-[1.5px] border-line bg-surface px-3 py-1.5 text-xs font-bold text-accent-deep"
         >
           {replay ? "실시간" : "리플레이"}
+        </button>
+        <button
+          onClick={() => {
+            const el = document.documentElement;
+            const next = el.dataset.theme === "dark" ? "light" : "dark";
+            el.dataset.theme = next;
+            localStorage.setItem("yn-theme", next);
+          }}
+          aria-label="라이트/다크 모드 전환"
+          className="theme-toggle relative h-[26px] w-[46px] shrink-0 rounded-full bg-track"
+        >
+          <span className="theme-knob absolute left-[2px] top-[2px] flex h-[22px] w-[22px] items-center justify-center rounded-full bg-surface shadow-[0_1px_4px_rgba(60,30,20,0.25)]">
+            <svg
+              className="dark-hide"
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#E8A13A"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              aria-hidden
+            >
+              <circle cx="12" cy="12" r="4.5" fill="#E8A13A" stroke="none" />
+              <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M19.4 4.6l-1.8 1.8M6.4 17.6l-1.8 1.8" />
+            </svg>
+            <svg
+              className="dark-show"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="#8FB0CC"
+              aria-hidden
+            >
+              <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z" />
+            </svg>
+          </span>
         </button>
       </header>
 
@@ -487,7 +555,7 @@ export default function Home() {
               <div className="flex items-baseline gap-2">
                 <h2 className="text-base font-extrabold">연어 모드</h2>
                 <span className="text-xs font-semibold text-faint">
-                  상류로 가면 더 확실해요
+                  {myPlans ? "내 위치 기준 비교" : "상류로 가면 더 확실해요"}
                 </span>
               </div>
 
@@ -498,7 +566,7 @@ export default function Home() {
                   <SalmonMini width={32} />
                 </span>
                 {riverStops.map((s, i) => {
-                  const isRec = rec?.stopName === s.name;
+                  const isRec = dispRec?.stopName === s.name;
                   const last = i === riverStops.length - 1;
                   const x = (i / (riverStops.length - 1)) * 100;
                   return (
@@ -530,7 +598,7 @@ export default function Home() {
                               : { left: `${x}%`, transform: "translateX(-50%)" }
                         }
                       >
-                        {s.walkMin === 0 ? "여기" : s.name}
+                        {s.walkMin === 0 && !myPlans ? "여기" : s.name}
                       </span>
                     </span>
                   );
@@ -540,7 +608,7 @@ export default function Home() {
               {/* 정류장별 비교 */}
               <div className="mt-3.5 flex flex-col gap-2">
                 {riverStops.map((s) => {
-                  const isRec = rec?.stopName === s.name;
+                  const isRec = dispRec?.stopName === s.name;
                   return (
                     <div
                       key={s.stationId}
@@ -554,7 +622,7 @@ export default function Home() {
                         }`}
                       >
                         <span className="block truncate">
-                          {s.walkMin === 0 ? "여기서 대기" : s.name}
+                          {s.walkMin === 0 && !myPlans ? "여기서 대기" : s.name}
                         </span>
                         <span
                           className={`block text-[10.5px] ${
@@ -563,7 +631,8 @@ export default function Home() {
                               : "font-medium text-faint"
                           }`}
                         >
-                          도보 {s.walkMin}분{isRec && " · 추천"}
+                          도보 {myPlans?.get(s.stationId)?.walk ?? s.walkMin}분
+                          {isRec && " · 추천"}
                         </span>
                       </span>
                       <span className="h-2 overflow-hidden rounded-full bg-track">
@@ -595,36 +664,48 @@ export default function Home() {
                 })}
               </div>
 
-              {saving !== null && saving > 0 && rec && (
+              {myPlans && mySaving !== null && mySaving > 0 && dispRec ? (
+                <p className="mt-3 rounded-xl bg-bg px-3 py-2.5 text-xs font-semibold text-muted">
+                  내 위치 기준 — {dispRec.walkMin}분 걸어 {dispRec.stopName}에서 타면{" "}
+                  {HOME_STOP.name} 대기보다{" "}
+                  <b className="text-accent-deep">약 {mySaving}분 단축</b> (예측치)
+                </p>
+              ) : !myPlans && saving !== null && saving > 0 && rec ? (
                 <p className="mt-3 rounded-xl bg-bg px-3 py-2.5 text-xs font-semibold text-muted">
                   {rec.walkMin}분 걸어 {rec.stopName}에서 타면 여기서 기다리는 것보다{" "}
                   <b className="text-accent-deep">약 {saving}분 단축</b> (예측치 기준)
                 </p>
-              )}
+              ) : null}
 
-              {rec && (
+              {dispRec && (
                 <div className="mt-3 flex items-start gap-2.5 rounded-[14px] bg-river px-3.5 py-3">
                   <span className="yn-pulse mt-1 h-2 w-2 shrink-0 rounded-full bg-[#7FD6A8]" />
                   <div className="flex flex-col gap-1">
                     <span className="text-[12.5px] font-bold text-[#EAF2F9]">
-                      {rec.stopName === HOME_STOP.name
+                      {dispRec.stopName === HOME_STOP.name && !myPlans
                         ? "지금 이 정류장"
-                        : `${rec.stopName} (도보 ${rec.walkMin}분)`}
-                      에서 <b className="text-[#FFB09B]">{rec.routeName}</b> · {rec.eta}분
-                      후 · 예상 잔여 {Math.max(rec.expectedSeats, 0)}석
-                      {rec.isDoubleDeck && " · 2층버스"}
+                        : `${dispRec.stopName} (도보 ${dispRec.walkMin}분)`}
+                      에서 <b className="text-[#FFB09B]">{dispRec.routeName}</b> ·{" "}
+                      {dispRec.eta}분 후 · 예상 잔여{" "}
+                      {Math.max(dispRec.expectedSeats, 0)}석
+                      {dispRec.isDoubleDeck && " · 2층버스"}
                     </span>
-                    {myWalk !== null && (
+                    {myRecPlan && (
                       <span className="text-xs font-semibold text-[#C6D8E6]">
-                        내 위치에서 도보 {myWalk}분 ·{" "}
-                        {rec.eta - myWalk >= 1 ? (
-                          <b className="text-[#7FD6A8]">
-                            지금 출발하면 도착 {rec.eta - myWalk}분 전
-                          </b>
+                        {dispRec.eta >= myRecPlan.walk ? (
+                          <>
+                            도보 {myRecPlan.walk}분 + 대기 {dispRec.eta - myRecPlan.walk}
+                            분 → <b className="text-[#7FD6A8]">{dispRec.eta}분 뒤 탑승</b>
+                          </>
                         ) : (
-                          <b className="text-[#FFB09B]">
-                            서둘러야 해요 — 걸어서 {myWalk}분, 버스는 {rec.eta}분 후
-                          </b>
+                          <>
+                            도보 {myRecPlan.walk}분 —{" "}
+                            <b className="text-[#FFB09B]">
+                              이번 차({dispRec.eta}분 후)는 빠듯해요
+                            </b>
+                            {myRecPlan.total !== null &&
+                              ` · 기대 총 ${myRecPlan.total}분`}
+                          </>
                         )}
                       </span>
                     )}

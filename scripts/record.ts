@@ -2,6 +2,7 @@
 // 실행: npm run record                    → constants의 HOME 체인, 09:05까지
 //       npm run record -- 09:30           → 종료시각 지정
 //       npm run record -- 09:30 dev-test  → 파일명 지정 (기본 rush-YYYYMMDD)
+//       npm run record -- 19:00 rush-pm 121000009  → 추가 정류장(쉼표 구분, 퇴근 서울 승차용)
 import "./load-env";
 import fs from "node:fs";
 import path from "node:path";
@@ -12,6 +13,7 @@ const [endH, endM] = (process.argv[2] ?? "09:05").split(":").map(Number);
 const stationIds = [
   HOME_STOP.stationId,
   ...HOME_STOP.upstream.map((u) => u.stationId),
+  ...(process.argv[4]?.split(",").filter(Boolean) ?? []),
 ];
 
 const today = new Date();

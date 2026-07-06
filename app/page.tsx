@@ -5,8 +5,10 @@ import { HOME_STOP, type Destination } from "@/constants/stops";
 import type { Arrival } from "@/lib/ggbus";
 import type { TaggedRoute } from "@/app/api/routes/route";
 import type { SalmonResponse } from "@/app/api/salmon/route";
+import type { ReplayResponse } from "@/app/api/replay/route";
 
 const POLL_MS = 25_000;
+const REPLAY_STEP_MS = 2_500; // 30초 간격 스냅샷을 2.5초마다 → 12배속
 const BRIEFING_MS = 60_000;
 
 const pct = (p: number) => Math.round(p * 100);
@@ -33,8 +35,11 @@ export default function Home() {
   const [briefing, setBriefing] = useState<{ text: string; ai: boolean } | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [tab, setTab] = useState<Destination>("gangnam");
+  const [replay, setReplay] = useState(false);
+  const [replayT, setReplayT] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const salmonRef = useRef<SalmonResponse | null>(null);
+  const replayIdx = useRef(0);
 
   useEffect(() => {
     fetch(`/api/routes?stationId=${HOME_STOP.stationId}`)
@@ -55,14 +60,17 @@ export default function Home() {
       .catch(() => setError("도착 정보를 불러오지 못했습니다"));
   }, []);
 
+  // 라이브: 도착정보 폴링
   useEffect(() => {
+    if (replay) return;
     poll();
     const id = setInterval(poll, POLL_MS);
     return () => clearInterval(id);
-  }, [poll]);
+  }, [poll, replay]);
 
-  // F3: 연어 모드 — 탭 방향 기준 HOME+상류 동시 예측
+  // 라이브: F3 연어 모드
   useEffect(() => {
+    if (replay) return;
     let dead = false;
     const run = () =>
       fetch(`/api/salmon?dest=${tab}`)
@@ -79,7 +87,33 @@ export default function Home() {
       dead = true;
       clearInterval(id);
     };
-  }, [tab]);
+  }, [tab, replay]);
+
+  // 리플레이: fixture 스냅샷 재생 (예측 로직은 라이브와 동일)
+  useEffect(() => {
+    if (!replay) return;
+    let dead = false;
+    const step = () =>
+      fetch(`/api/replay?i=${replayIdx.current}&dest=${tab}`)
+        .then((r) => r.json())
+        .then((d: ReplayResponse & { error?: string }) => {
+          if (dead || d.error) return;
+          setArrivals(new Map(d.arrivals.map((a) => [a.routeId, a])));
+          const s = { ...d.salmon, generatedAt: Date.parse(d.t) };
+          setSalmon(s);
+          salmonRef.current = s;
+          setReplayT(d.t);
+          setUpdatedAt(new Date(d.t));
+          replayIdx.current = (d.index + 1) % d.total;
+        })
+        .catch(() => {});
+    step();
+    const id = setInterval(step, REPLAY_STEP_MS);
+    return () => {
+      dead = true;
+      clearInterval(id);
+    };
+  }, [tab, replay]);
 
   // F4: AI 브리핑 — 60초 간격 (서버에도 60초 캐시)
   useEffect(() => {
@@ -115,7 +149,7 @@ export default function Home() {
         .then((d) => !dead && d.briefing && setBriefing({ text: d.briefing, ai: d.ai }))
         .catch(() => {});
     };
-    const t = setTimeout(run, 2_000); // salmon 첫 응답 직후
+    const t = setTimeout(run, 2_000);
     const id = setInterval(run, BRIEFING_MS);
     return () => {
       dead = true;
@@ -136,17 +170,48 @@ export default function Home() {
 
   return (
     <main className="mx-auto w-full max-w-md flex-1 p-4 pb-10">
-      <header className="mb-4">
-        <h1 className="text-2xl font-bold">
-          연어 <span aria-hidden>🐟</span>
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">{HOME_STOP.name} · 서울 방면</p>
-        <p className="text-xs text-gray-400">
-          {updatedAt
-            ? `${updatedAt.toLocaleTimeString("ko-KR")} 갱신 · 25초 자동 갱신`
-            : "불러오는 중…"}
-        </p>
+      <header className="mb-4 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">
+            연어 <span aria-hidden>🐟</span>
+          </h1>
+          <p className="mt-1 text-sm text-gray-500">{HOME_STOP.name} · 서울 방면</p>
+          <p className="text-xs text-gray-400">
+            {updatedAt
+              ? replay
+                ? `${updatedAt.toLocaleTimeString("ko-KR")} 시점 재생`
+                : `${updatedAt.toLocaleTimeString("ko-KR")} 갱신 · 25초 자동 갱신`
+              : "불러오는 중…"}
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            replayIdx.current = 0;
+            setReplay(!replay);
+          }}
+          className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${
+            replay ? "border-amber-400 text-amber-500" : "text-gray-500"
+          }`}
+        >
+          {replay ? "실시간으로" : "출근시간 리플레이"}
+        </button>
       </header>
+
+      {replay && replayT && (
+        <div className="mb-3 rounded-lg border border-amber-400 bg-amber-400/10 p-3 text-xs">
+          🔁{" "}
+          <b>
+            {new Date(replayT).toLocaleString("ko-KR", {
+              month: "long",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}{" "}
+            실데이터 리플레이
+          </b>{" "}
+          재생 중 (12배속) — 실시간 정보가 아닙니다
+        </div>
+      )}
 
       <div className="mb-4 grid grid-cols-2 gap-1 rounded-xl border p-1 text-sm font-medium">
         {(
@@ -234,7 +299,7 @@ export default function Home() {
         </section>
       )}
 
-      {error && (
+      {error && !replay && (
         <p className="mb-3 rounded-lg border border-red-300 p-3 text-sm text-red-500">
           {error}
         </p>

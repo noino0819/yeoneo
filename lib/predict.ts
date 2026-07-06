@@ -1,7 +1,7 @@
 import { PREDICT_COEF as C } from "../constants/stops";
 
-// F2: 도달 시 좌석 예측 — 룰 기반 v1. 순수함수 (테스트: scripts/check-predict.ts)
-// ponytail: 룰 기반 근사. 시 교통카드 데이터 연계 시 학습 기반으로 교체
+// F2: 도달 시 좌석 예측 — 도착률 모델 + 포아송 탑승확률. 순수함수 (테스트: scripts/check-predict.ts)
+// 계수는 출근 녹화(npm run record)를 npm run fit으로 실측 피팅해 갱신
 
 export interface PredictInput {
   remainSeats: number; // 현재 실측 잔여좌석
@@ -32,7 +32,14 @@ export function predictBoarding(input: PredictInput): Prediction {
 
   const boarded = perStop * input.upstreamStopCount;
   const expectedSeats = input.remainSeats - boarded;
-  const boardingProbability = Math.min(0.98, Math.max(0.02, expectedSeats / 8));
+
+  // P(탑승) = P(상류 승차 수요 < 잔여좌석). 승차를 Poisson(boarded)로 보고 정규근사,
+  // 날짜별 수요 변동은 과산포 계수로 흡수. Φ는 로지스틱 근사(1.702x).
+  const sigma = Math.sqrt(Math.max(C.overdispersion * boarded, 1));
+  const boardingProbability = Math.min(
+    0.98,
+    Math.max(0.02, 1 / (1 + Math.exp((-1.702 * expectedSeats) / sigma))),
+  );
 
   const reasons = [
     peak ? "출근 피크 시간대" : "비피크 시간대",

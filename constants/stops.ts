@@ -67,6 +67,7 @@ export const PREDICT_COEF = {
   peakEndHour: 9,
   recentPassRelief: 1.5, // 최근 N분간 동일 방향 통과 대수당 승차 감소
   doubleDeckRelief: 0.6, // 2층버스면 승차 압박 완화 계수 (좌석 공급 ↑)
+  overdispersion: 2, // 승차 수요 분산 배수(포아송 대비 날짜별 변동) — npm run fit으로 실측 피팅
 };
 
 // F3 강북행 대안 카드용 환승 근사치 (분) — v1은 정적 추정치, UI에 "추정" 명시

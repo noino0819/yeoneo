@@ -124,18 +124,24 @@ API 한도가 터져도 브리핑은 항상 나옵니다.
 
 <br/>
 
-정류장당 승차 인원을 도착률 기반으로 추정합니다.
+정류장당 승차 인원을 도착률 기반으로 추정하고, 탑승확률은 승차 수요를
+포아송 과정으로 본 정규근사로 계산합니다.
 
 ```
 정류장당 승차 = (시간대별 base ÷ 전형 배차간격) × 실제 배차간격 − 최근통과 완화
              × (2층버스면 좌석공급 완화 계수)
 
-도달 시 좌석 = 현재 잔여좌석 − 정류장당 승차 × 상류 정류장 수
-탑승확률    = clamp(도달 시 좌석 ÷ 8, 2%, 98%)
+예상 승차 λ  = 정류장당 승차 × 상류 정류장 수
+도달 시 좌석 = 현재 잔여좌석 − λ
+탑승확률    = Φ( 도달 시 좌석 ÷ √(φ·λ) )     # 승차 ~ Poisson(λ), φ = 과산포 계수
 ```
 
 계수는 [constants/stops.ts](constants/stops.ts)의 `PREDICT_COEF`에 모여 있고,
-[scripts/check-predict.ts](scripts/check-predict.ts)로 검증합니다. 실측 녹화 데이터로 계속 튜닝 중이에요.
+[scripts/check-predict.ts](scripts/check-predict.ts)로 검증합니다.
+`base`와 `φ`는 감으로 정한 값이 아니라 실측으로 피팅합니다 —
+출근시간 녹화(`npm run record`)에서 버스를 차량번호로 추적해
+정류장당 실제 승차를 측정하고, `npm run fit`이 계수 제안과
+현행 대비 백테스트 오차(MAE)를 출력합니다.
 
 </details>
 
@@ -181,6 +187,7 @@ npm run dev   # http://localhost:3000
 |:--|:--|
 | `npm run dev` | 개발 서버 |
 | `npm run record` | 출근시간 도착정보 녹화 (HOME + 상류 체인 동시) |
+| `npm run fit` | 녹화에서 예측 계수 실측 피팅 + 백테스트 |
 | `npm run check` | 좌석 예측 로직 검증 |
 | `npm run setup:constants` | 정류장 · 노선 상수 셋업 |
 
@@ -198,7 +205,7 @@ lib/
 ├─ predict.ts           # F2 좌석 예측 (룰 기반, 순수함수)
 ├─ salmon.ts            # F3 상류 체인 조립 (라이브·리플레이 공유)
 └─ walk.ts              # 하버사인 도보 시간
-scripts/                # 녹화 · 검증 · 상수 셋업
+scripts/                # 녹화 · 피팅 · 검증 · 상수 셋업
 fixtures/               # 리플레이용 녹화 데이터
 ```
 

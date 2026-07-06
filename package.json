@@ -9,6 +9,7 @@
     "lint": "eslint",
     "check": "tsx scripts/check-predict.ts",
     "record": "tsx scripts/record.ts",
+    "fit": "tsx scripts/fit-coef.ts",
     "setup:constants": "tsx scripts/setup-constants.ts"
   },
   "dependencies": {

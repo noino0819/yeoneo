@@ -28,6 +28,22 @@ const seatGrade = (n: number | null): Grade | null =>
 
 const seatText = (n: number | null) => (n === null || n < 0 ? "—" : `${n}석`);
 
+const SwapIcon = () => (
+  <svg
+    width="15"
+    height="15"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <path d="M5 13V3M5 3 2.5 5.5M5 3l2.5 2.5M11 3v10M11 13l-2.5-2.5M11 13l2.5-2.5" />
+  </svg>
+);
+
 // 출발/도착 정류장 선택
 interface PickedStop {
   stationId: string;
@@ -121,6 +137,13 @@ export default function Home() {
     setPicker(null);
     setDestArrivals(new Map());
     setDestVia(null);
+  };
+
+  const swapStops = () => {
+    if (!destStop) return;
+    const prev = origin;
+    pickOrigin(destStop);
+    pickDest(prev);
   };
 
   const locate = useCallback(() => {
@@ -480,21 +503,9 @@ export default function Home() {
               만석이면, 거슬러 오르세요
             </span>
           </div>
-          <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[13px] font-medium text-muted">
-            <button
-              onClick={() => setPicker("origin")}
-              className="min-w-0 truncate underline decoration-line decoration-dotted underline-offset-[3px]"
-            >
-              {origin.name}
-            </button>
-            <span aria-hidden>→</span>
-            <button
-              onClick={() => setPicker("dest")}
-              className={`min-w-0 truncate underline decoration-line decoration-dotted underline-offset-[3px] ${destStop ? "" : "text-faint"}`}
-            >
-              {destStop?.name ?? "서울 방면"}
-            </button>
-          </div>
+          <p className="mt-0.5 truncate text-[13px] font-medium text-muted">
+            {tab === "gangnam" ? "강남 방면" : "서울역·강북 방면"} 광역버스
+          </p>
         </div>
         {origin.stationId === HOME_STOP.stationId && (
           <button
@@ -560,6 +571,51 @@ export default function Home() {
             : "도착 정보를 거슬러 올라가는 중…"}
         </span>
       </div>
+
+      {/* 출발/도착 패널 — 네이버 길찾기 스타일 */}
+      <section className={`${CARD} mt-3 flex items-stretch`}>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <button
+            onClick={() => setPicker("origin")}
+            className="flex min-w-0 items-center gap-2.5 px-4 py-3 text-left"
+          >
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full border-[2.5px] border-accent" />
+            <span className="min-w-0 truncate text-sm font-bold text-ink">
+              {origin.name}
+            </span>
+            <span className="ml-auto shrink-0 text-[11px] font-semibold text-faint">
+              출발
+            </span>
+          </button>
+          <div className="mx-4 border-t border-line" />
+          <button
+            onClick={() => setPicker("dest")}
+            className="flex min-w-0 items-center gap-2.5 px-4 py-3 text-left"
+          >
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-accent-deep" />
+            {destStop ? (
+              <span className="min-w-0 truncate text-sm font-bold text-ink">
+                {destStop.name}
+              </span>
+            ) : (
+              <span className="min-w-0 truncate text-sm font-semibold text-faint">
+                도착 정류장 선택
+              </span>
+            )}
+            <span className="ml-auto shrink-0 text-[11px] font-semibold text-faint">
+              도착
+            </span>
+          </button>
+        </div>
+        <button
+          onClick={swapStops}
+          disabled={!destStop}
+          aria-label="출발·도착 바꾸기"
+          className="my-auto mr-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-muted disabled:opacity-30"
+        >
+          <SwapIcon />
+        </button>
+      </section>
 
       {replay && replayT && (
         <div className="mt-3 rounded-[14px] border border-info/25 bg-info-soft px-3.5 py-2.5 text-xs font-semibold text-info">
@@ -1021,7 +1077,7 @@ function StationPicker({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 lg:justify-center"
+      className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/40 lg:justify-center"
       onClick={onClose}
     >
       <div

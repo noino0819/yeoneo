@@ -7,6 +7,7 @@ import type { TaggedRoute } from "@/app/api/routes/route";
 import type { SalmonResponse } from "@/app/api/salmon/route";
 import type { ReplayResponse } from "@/app/api/replay/route";
 import { Salmon, SalmonMini, SalmonPoint, SalmonSad, SalmonSleep } from "@/app/mascot";
+import { StationPicker, type PickedStop } from "@/app/station-picker";
 import { walkMinutes } from "@/lib/walk";
 
 const POLL_MS = 25_000;
@@ -45,12 +46,6 @@ const SwapIcon = () => (
 );
 
 // 출발/도착 정류장 선택
-interface PickedStop {
-  stationId: string;
-  name: string;
-  lat: number;
-  lng: number;
-}
 const DEFAULT_ORIGIN: PickedStop = {
   stationId: HOME_STOP.stationId,
   name: HOME_STOP.name,
@@ -1035,7 +1030,9 @@ export default function Home() {
 
       {picker && (
         <StationPicker
-          title={picker === "origin" ? "출발 정류장 검색" : "도착 정류장 검색"}
+          mode={picker}
+          center={picker === "dest" && destStop ? destStop : origin}
+          geo={geo}
           allowClear={picker === "dest" && destStop !== null}
           onClear={() => pickDest(null)}
           onSelect={(st) => (picker === "origin" ? pickOrigin(st) : pickDest(st))}
@@ -1043,105 +1040,6 @@ export default function Home() {
         />
       )}
     </main>
-  );
-}
-
-function StationPicker({
-  title,
-  allowClear,
-  onClear,
-  onSelect,
-  onClose,
-}: {
-  title: string;
-  allowClear: boolean;
-  onClear: () => void;
-  onSelect: (st: PickedStop) => void;
-  onClose: () => void;
-}) {
-  const [q, setQ] = useState("");
-  const [items, setItems] = useState<
-    (PickedStop & { region: string; mobileNo: string })[] | null
-  >(null);
-
-  useEffect(() => {
-    if (q.trim().length < 2) return;
-    const id = setTimeout(() => {
-      fetch(`/api/stations?q=${encodeURIComponent(q.trim())}`)
-        .then((r) => r.json())
-        .then((d) => setItems(d.stations ?? []))
-        .catch(() => setItems([]));
-    }, 300);
-    return () => clearTimeout(id);
-  }, [q]);
-
-  return (
-    <div
-      className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/40 lg:justify-center"
-      onClick={onClose}
-    >
-      <div
-        className="mx-auto flex max-h-[75vh] w-full max-w-[430px] flex-col gap-3 rounded-t-[24px] bg-surface p-5 pb-8 lg:max-h-[60vh] lg:max-w-[520px] lg:rounded-[24px] lg:pb-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between">
-          <b className="text-base font-extrabold">{title}</b>
-          <button onClick={onClose} className="text-sm font-bold text-faint">
-            닫기
-          </button>
-        </div>
-        <input
-          autoFocus
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setItems(null);
-          }}
-          placeholder="정류장 이름 (2글자 이상)"
-          className="rounded-xl border border-line bg-bg px-4 py-3 text-sm font-medium text-ink outline-none focus:border-accent"
-        />
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {allowClear && (
-            <button
-              onClick={onClear}
-              className="w-full border-b border-line py-3 text-left text-sm font-bold text-bad"
-            >
-              도착 정류장 지정 해제
-            </button>
-          )}
-          {items === null ? (
-            <p className="py-6 text-center text-xs font-medium text-faint">
-              {q.trim().length >= 2 ? "찾는 중…" : "정류장 이름으로 검색하세요"}
-            </p>
-          ) : items.length === 0 ? (
-            <p className="py-6 text-center text-xs font-medium text-faint">
-              검색 결과가 없어요
-            </p>
-          ) : (
-            items.map((s) => (
-              <button
-                key={`${s.stationId}-${s.mobileNo}`}
-                onClick={() =>
-                  onSelect({
-                    stationId: s.stationId,
-                    name: s.name,
-                    lat: s.lat,
-                    lng: s.lng,
-                  })
-                }
-                className="block w-full border-b border-line py-3 text-left last:border-0"
-              >
-                <span className="block text-sm font-bold text-ink">{s.name}</span>
-                <span className="block text-xs font-medium text-faint">
-                  {s.region}
-                  {s.mobileNo && ` · ${s.mobileNo}`}
-                </span>
-              </button>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
   );
 }
 

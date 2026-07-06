@@ -156,6 +156,28 @@ body {
   animation: yn-dash 1.4s linear infinite;
 }
 
+/* 지도 픽커 — 선택 정류장 라벨 (leaflet 기본 CSS보다 특이도 높여야 이김) */
+.leaflet-tooltip.yn-stop-label {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 2px 8px;
+  font-weight: 700;
+  font-size: 11px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.leaflet-tooltip-top.yn-stop-label::before {
+  border-top-color: var(--line);
+}
+.leaflet-container .leaflet-control-attribution {
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  color: var(--faint);
+}
+.leaflet-container .leaflet-control-attribution a {
+  color: var(--muted);
+}
+
 .skeleton {
   background: linear-gradient(90deg, var(--track) 25%, var(--accent-soft) 50%, var(--track) 75%);
   background-size: 200% 100%;

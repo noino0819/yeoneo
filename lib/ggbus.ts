@@ -9,6 +9,7 @@ export const PATHS = {
   routeStations: "/busrouteservice/v2/getBusRouteStationListv2", // 노선 경유 정류장
   routeInfo: "/busrouteservice/v2/getBusRouteInfoItemv2", // 노선 기본정보(배차간격 등)
   stationSearch: "/busstationservice/v2/getBusStationListv2", // 정류소 키워드 검색
+  stationAround: "/busstationservice/v2/getBusStationAroundListv2", // 좌표 주변 정류소 (반경 500m)
   stationRoutes: "/busstationservice/v2/getBusStationViaRouteListv2", // 정류소 경유노선
 } as const;
 
@@ -107,6 +108,14 @@ export async function searchStations(keyword: string) {
   const body = await ggFetch(PATHS.stationSearch, { keyword });
   return asArray<Record<string, unknown>>(
     (body.busStationList as never) ?? (body.itemList as never),
+  );
+}
+
+// 지도 픽커: 핀 좌표 주변 정류소 (x=경도, y=위도)
+export async function getStationsAround(x: string, y: string) {
+  const body = await ggFetch(PATHS.stationAround, { x, y });
+  return asArray<Record<string, unknown>>(
+    (body.busStationAroundList as never) ?? (body.itemList as never),
   );
 }
 

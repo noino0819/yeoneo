@@ -1,6 +1,6 @@
 // 실행: node scripts/check-predict.ts (Node 23.6+ 타입 스트리핑)
 import assert from "node:assert";
-import { predictBoarding, expectedCommuteMin } from "../lib/predict";
+import { predictBoarding, expectedCommuteMin, boardingProb } from "../lib/predict";
 import { walkMinutes } from "../lib/walk";
 
 const base = {
@@ -40,6 +40,15 @@ const midday = predictBoarding({
 assert(
   midday.boardingProbability >= 0.7,
   `비피크 39석/7정거장 확률이 너무 낮음: ${midday.boardingProbability}`,
+);
+
+// 대기열 반영: 내 앞 사람이 많을수록 확률 단조 감소, 0명이면 서버 확률과 일치
+assert(
+  boardingProb(peak.expectedSeats, peak.sigma) >
+    boardingProb(peak.expectedSeats - 5, peak.sigma) &&
+    boardingProb(peak.expectedSeats - 5, peak.sigma) >
+      boardingProb(peak.expectedSeats - 15, peak.sigma),
+  "대기 인원 증가 시 확률이 줄어야 함",
 );
 
 // walkMinutes: 위경도 근방 ~500m ≈ 8분

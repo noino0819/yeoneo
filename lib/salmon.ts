@@ -19,6 +19,7 @@ export interface BusPlan {
   isDoubleDeck: boolean;
   prob: number;
   expectedSeats: number;
+  sigma: number;
   reasons: string[];
   commuteMin: number;
 }
@@ -149,6 +150,7 @@ function toPlans(
         isDoubleDeck,
         prob: p.boardingProbability,
         expectedSeats: p.expectedSeats,
+        sigma: p.sigma,
         reasons: p.reasons,
         commuteMin: expectedCommuteMin(walkMin, p.boardingProbability, headway),
       };

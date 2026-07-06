@@ -15,7 +15,17 @@ export interface PredictInput {
 export interface Prediction {
   expectedSeats: number;
   boardingProbability: number; // 0~1
+  sigma: number; // 수요 표준편차 — 클라이언트에서 대기열 반영 재계산용
   reasons: string[];
+}
+
+// P(탑승) = P(상류 승차 수요 < 잔여 마진). Φ는 로지스틱 근사(1.702x).
+// 내 앞 대기 k명 반영은 margin에서 k를 빼면 됨: boardingProb(expectedSeats - k, sigma)
+export function boardingProb(margin: number, sigma: number): number {
+  return Math.min(
+    0.98,
+    Math.max(0.02, 1 / (1 + Math.exp((-1.702 * margin) / sigma))),
+  );
 }
 
 export function predictBoarding(input: PredictInput): Prediction {
@@ -33,13 +43,9 @@ export function predictBoarding(input: PredictInput): Prediction {
   const boarded = perStop * input.upstreamStopCount;
   const expectedSeats = input.remainSeats - boarded;
 
-  // P(탑승) = P(상류 승차 수요 < 잔여좌석). 승차를 Poisson(boarded)로 보고 정규근사,
-  // 날짜별 수요 변동은 과산포 계수로 흡수. Φ는 로지스틱 근사(1.702x).
+  // 승차를 Poisson(boarded)로 보고 정규근사, 날짜별 수요 변동은 과산포 계수로 흡수.
   const sigma = Math.sqrt(Math.max(C.overdispersion * boarded, 1));
-  const boardingProbability = Math.min(
-    0.98,
-    Math.max(0.02, 1 / (1 + Math.exp((-1.702 * expectedSeats) / sigma))),
-  );
+  const boardingProbability = boardingProb(expectedSeats, sigma);
 
   const reasons = [
     peak ? "출근 피크 시간대" : "비피크 시간대",
@@ -53,6 +59,7 @@ export function predictBoarding(input: PredictInput): Prediction {
   return {
     expectedSeats: Math.round(expectedSeats),
     boardingProbability: Math.round(boardingProbability * 100) / 100,
+    sigma: Math.round(sigma * 100) / 100,
     reasons,
   };
 }

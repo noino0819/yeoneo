@@ -10,6 +10,7 @@ import { Salmon, SalmonMini, SalmonPoint, SalmonSad, SalmonSleep } from "@/app/m
 import { StationPicker, type PickedStop } from "@/app/station-picker";
 import type { StationHit } from "@/app/api/stations/route";
 import { haversineMeters, walkMinutes } from "@/lib/walk";
+import { boardingProb } from "@/lib/predict";
 
 const POLL_MS = 25_000; // 아침 피크 — 그 외 시간은 pollMs()가 60초로 늦춰 쿼터 절약
 const pollMs = () => {
@@ -165,6 +166,7 @@ export default function Home() {
   // 현재 위치에서 가장 가까운 정류장을 바로 출발로 — 픽커 안 거치는 지름길.
   // 위치 거부·주변 정류장 없음이면 지도 픽커로 폴백
   const [locating, setLocating] = useState(false);
+  const [queue, setQueue] = useState(0); // 내 앞 대기 인원 (노선번호 줄 기준)
   const originFromHere = () => {
     if (locating) return;
     if (!navigator.geolocation) {
@@ -802,10 +804,46 @@ export default function Home() {
                     : "도착 시간 없이 노선만 보여드려요"}
                 </p>
               )}
+              {/* 내 앞 대기열 — 노선번호 줄 기준 실측 입력, 탑승확률에 즉시 반영 */}
+              <div className={`flex items-center px-3.5 py-2 ${CARD}`}>
+                <span className="text-xs font-semibold text-muted">
+                  내 앞에 기다리는 사람{" "}
+                  <b className={queue > 0 ? "text-accent-deep" : "text-faint"}>
+                    {queue}명
+                  </b>
+                  {queue > 0 && (
+                    <span className="ml-1.5 font-medium text-faint">
+                      · 확률에 반영됨
+                    </span>
+                  )}
+                </span>
+                <span className="ml-auto flex items-center gap-1.5">
+                  <button
+                    aria-label="대기 인원 줄이기"
+                    onClick={() => setQueue((q) => Math.max(q - 1, 0))}
+                    className="h-8 w-8 rounded-lg bg-track text-base font-extrabold text-muted transition-transform active:scale-90"
+                  >
+                    −
+                  </button>
+                  <button
+                    aria-label="대기 인원 늘리기"
+                    onClick={() => setQueue((q) => Math.min(q + 1, 40))}
+                    className="h-8 w-8 rounded-lg bg-track text-base font-extrabold text-muted transition-transform active:scale-90"
+                  >
+                    +
+                  </button>
+                </span>
+              </div>
               <ul className="flex flex-col gap-2.5">
                 {tabRoutes.map(({ route, arrival }, i) => {
                   const mBus = route.typeName.includes("광역급행");
                   const plan = homePlans.get(route.routeName);
+                  // 내 앞 k명이 먼저 타면 내 몫 마진은 expectedSeats - k
+                  const prob =
+                    plan &&
+                    (queue > 0
+                      ? boardingProb(plan.expectedSeats - queue, plan.sigma)
+                      : plan.prob);
                   const seats = arrival?.remainSeatCnt1 ?? null;
                   const sGrade = seatGrade(seats);
                   const v = destStop ? destVia?.[route.routeId] : undefined;
@@ -869,21 +907,21 @@ export default function Home() {
                             </b>
                           </span>
                           <span className="h-[7px] flex-1 overflow-hidden rounded-full bg-track">
-                            {plan && (
+                            {typeof prob === "number" && (
                               <span
                                 className="yn-fill block h-full rounded-full"
                                 style={{
-                                  width: `${pct(plan.prob)}%`,
-                                  background: `var(--${probGrade(plan.prob)})`,
+                                  width: `${pct(prob)}%`,
+                                  background: `var(--${probGrade(prob)})`,
                                 }}
                               />
                             )}
                           </span>
-                          {plan && (
+                          {typeof prob === "number" && (
                             <span
-                              className={`whitespace-nowrap text-xs font-extrabold ${GRADE_TEXT[probGrade(plan.prob)]}`}
+                              className={`whitespace-nowrap text-xs font-extrabold ${GRADE_TEXT[probGrade(prob)]}`}
                             >
-                              탑승 {pct(plan.prob)}%
+                              탑승 {pct(prob)}%
                             </span>
                           )}
                         </div>

@@ -50,10 +50,10 @@ const SwapIcon = () => (
   </svg>
 );
 
-const LocateIcon = () => (
+const LocateIcon = ({ size = 16 }: { size?: number }) => (
   <svg
-    width="16"
-    height="16"
+    width={size}
+    height={size}
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
@@ -225,20 +225,54 @@ export default function Home() {
     );
   }, []);
 
-  // 저장된 선택 복원 + 위치: 이전에 허용했으면 조용히 갱신, 처음이면 카드로 물어봄
-  // (localStorage는 SSR에 없어 hydration 후 effect에서 읽어야 함)
+  // 저장된 선택 복원 + 위치: 이전에 허용했으면 현재 위치 기준으로 출발 자동 전환,
+  // 처음이면 카드로 물어봄 (localStorage는 SSR에 없어 hydration 후 effect에서 읽어야 함)
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
+    let savedId = DEFAULT_ORIGIN.stationId;
     try {
       const o = localStorage.getItem("yn-origin");
-      if (o) setOrigin(JSON.parse(o));
+      if (o) {
+        const p: PickedStop = JSON.parse(o);
+        setOrigin(p);
+        savedId = p.stationId;
+      }
       const d = localStorage.getItem("yn-dest");
       if (d) setDestStop(JSON.parse(d));
     } catch {}
     const pref = localStorage.getItem("yn-geo");
-    if (pref === "on") locate();
-    else if (pref === null) setGeoPrompt(true);
-  }, [locate]);
+    if (pref === null) setGeoPrompt(true);
+    if (pref !== "on") return;
+    // 가장 가까운 정류장부터 '방면 노선이 있는' 곳을 골라 자동 전환 —
+    // 셋 다 노선이 없으면(예: 서비스권 밖) 저장된 출발 그대로
+    navigator.geolocation?.getCurrentPosition(
+      async (p) => {
+        const here = { lat: p.coords.latitude, lng: p.coords.longitude };
+        setGeo(here);
+        try {
+          const d = await fetch(
+            `/api/stations/around?lat=${here.lat}&lng=${here.lng}`,
+          ).then((r) => r.json());
+          const nearby = ((d.stations ?? []) as StationHit[])
+            .map((s) => ({ ...s, m: haversineMeters(here, s) }))
+            .sort((a, b) => a.m - b.m)
+            .slice(0, 3);
+          for (const s of nearby) {
+            if (s.stationId === savedId) break; // 이미 가장 가까운 정류장
+            const r = await fetch(`/api/routes?stationId=${s.stationId}`).then((x) =>
+              x.json(),
+            );
+            if ((r.routes ?? []).length > 0) {
+              pickOrigin({ stationId: s.stationId, name: s.name, lat: s.lat, lng: s.lng });
+              break;
+            }
+          }
+        } catch {} // 자동 전환 실패는 조용히 — 저장된 출발 유지
+      },
+      () => {},
+      { maximumAge: 60_000 },
+    );
+  }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const loadRoutes = useCallback(() => {
@@ -671,9 +705,10 @@ export default function Home() {
               onClick={originFromHere}
               disabled={locating}
               aria-label="내 위치에서 가장 가까운 정류장으로 출발 설정"
-              className={`grid h-8 w-8 shrink-0 place-items-center rounded-full bg-info-soft text-info ${locating ? "animate-pulse" : ""}`}
+              className={`flex shrink-0 items-center gap-1 rounded-full bg-accent-soft px-2.5 py-1.5 text-[11px] font-extrabold text-accent-deep ${locating ? "animate-pulse" : ""}`}
             >
-              <LocateIcon />
+              <LocateIcon size={13} />
+              {locating ? "잡는 중…" : "내 위치"}
             </button>
             <span className="ml-2.5 mr-4 shrink-0 text-[11px] font-semibold text-faint">
               출발

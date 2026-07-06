@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
       lat: Number(s.y),
       lng: Number(s.x),
       region: String(s.regionName ?? ""),
-      mobileNo: s.mobileNo ? String(s.mobileNo) : "",
+      mobileNo: s.mobileNo ? String(s.mobileNo).trim() : "",
     }));
     return NextResponse.json({ stations });
   } catch (e) {

@@ -54,6 +54,8 @@ export function StationPicker({
   const [me, setMe] = useState<LatLng | null>(geo);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<StationHit[] | null>(null);
+  // stationId → 경유 노선(방면) — 같은 이름 상·하행 쌍둥이 구분용
+  const [dirs, setDirs] = useState<Record<string, { name: string; dest: string }[]>>({});
 
   // 지도 초기화 — leaflet은 window를 만져 SSR 불가라 동적 import
   useEffect(() => {
@@ -130,6 +132,20 @@ export function StationPicker({
     .map((s) => ({ ...s, m: Math.round(haversineMeters(pin, s)) }))
     .sort((a, b) => a.m - b.m)
     .slice(0, 6);
+
+  // 대상(선택 or 최근접) 정류장의 경유 노선·방면 로드 — 어느 방향 폴인지 보여줌
+  const targetId = (selected ?? near[0])?.stationId;
+  const dirsFetched = useRef(new Set<string>());
+  useEffect(() => {
+    if (!targetId || dirsFetched.current.has(targetId)) return;
+    dirsFetched.current.add(targetId);
+    fetch(`/api/stations/routes?stationId=${targetId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.routes) setDirs((prev) => ({ ...prev, [targetId]: d.routes }));
+      })
+      .catch(() => {});
+  }, [targetId]);
 
   // 마커·도보 점선 다시 그리기
   useEffect(() => {
@@ -332,6 +348,8 @@ export function StationPicker({
             ) : (
               near.map((s, i) => {
                 const sel = selected?.stationId === s.stationId;
+                const isTarget = targetId === s.stationId;
+                const dir = isTarget ? dirs[s.stationId] : undefined;
                 return (
                   <button
                     key={`${s.stationId}-${s.mobileNo}`}
@@ -362,6 +380,15 @@ export function StationPicker({
                         )}
                         {s.region}
                       </span>
+                      {dir && dir.length > 0 && (
+                        <span className="mt-0.5 block truncate text-[10.5px] font-semibold text-muted">
+                          {dir
+                            .slice(0, 3)
+                            .map((r) => `${r.name} ${r.dest} 방면`)
+                            .join(" · ")}
+                          {dir.length > 3 && ` 외 ${dir.length - 3}개`}
+                        </span>
+                      )}
                     </span>
                     <span className="flex-none text-right tabular-nums">
                       <b className="block text-sm font-extrabold text-ink">

@@ -8,9 +8,14 @@ import type { SalmonResponse } from "@/app/api/salmon/route";
 import type { ReplayResponse } from "@/app/api/replay/route";
 import { Salmon, SalmonMini, SalmonPoint, SalmonSad, SalmonSleep } from "@/app/mascot";
 import { StationPicker, type PickedStop } from "@/app/station-picker";
-import { walkMinutes } from "@/lib/walk";
+import type { StationHit } from "@/app/api/stations/route";
+import { haversineMeters, walkMinutes } from "@/lib/walk";
 
-const POLL_MS = 25_000;
+const POLL_MS = 25_000; // 아침 피크 — 그 외 시간은 pollMs()가 60초로 늦춰 쿼터 절약
+const pollMs = () => {
+  const h = new Date().getHours();
+  return h >= 6 && h < 10 ? POLL_MS : 60_000;
+};
 const REPLAY_STEP_MS = 2_500; // 30초 간격 스냅샷을 2.5초마다 → 12배속
 const BRIEFING_MS = 60_000;
 
@@ -42,6 +47,22 @@ const SwapIcon = () => (
     aria-hidden
   >
     <path d="M5 13V3M5 3 2.5 5.5M5 3l2.5 2.5M11 3v10M11 13l-2.5-2.5M11 13l2.5-2.5" />
+  </svg>
+);
+
+const LocateIcon = () => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.2"
+    strokeLinecap="round"
+    aria-hidden
+  >
+    <circle cx="12" cy="12" r="3.4" />
+    <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
   </svg>
 );
 
@@ -141,6 +162,54 @@ export default function Home() {
     pickDest(prev);
   };
 
+  // 현재 위치에서 가장 가까운 정류장을 바로 출발로 — 픽커 안 거치는 지름길.
+  // 위치 거부·주변 정류장 없음이면 지도 픽커로 폴백
+  const [locating, setLocating] = useState(false);
+  const originFromHere = () => {
+    if (locating) return;
+    if (!navigator.geolocation) {
+      setPicker("origin");
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (p) => {
+        const here = { lat: p.coords.latitude, lng: p.coords.longitude };
+        setGeo(here);
+        setGeoPrompt(false);
+        localStorage.setItem("yn-geo", "on");
+        try {
+          const d = await fetch(
+            `/api/stations/around?lat=${here.lat}&lng=${here.lng}`,
+          ).then((r) => r.json());
+          const stops: StationHit[] = d.stations ?? [];
+          if (stops.length === 0) {
+            setPicker("origin");
+            return;
+          }
+          const nearest = stops.reduce((a, b) =>
+            haversineMeters(here, a) <= haversineMeters(here, b) ? a : b,
+          );
+          pickOrigin({
+            stationId: nearest.stationId,
+            name: nearest.name,
+            lat: nearest.lat,
+            lng: nearest.lng,
+          });
+        } catch {
+          setPicker("origin");
+        } finally {
+          setLocating(false);
+        }
+      },
+      () => {
+        setLocating(false);
+        setPicker("origin");
+      },
+      { maximumAge: 60_000 },
+    );
+  };
+
   const locate = useCallback(() => {
     navigator.geolocation?.getCurrentPosition(
       (p) => {
@@ -200,12 +269,19 @@ export default function Home() {
       );
   }, [origin.stationId]);
 
-  // 라이브: 도착정보 폴링
+  // 라이브: 도착정보 폴링 — 화면에 보일 때만, 백그라운드에서 복귀하면 즉시 1회
   useEffect(() => {
     if (replay) return;
     poll();
-    const id = setInterval(poll, POLL_MS);
-    return () => clearInterval(id);
+    const id = setInterval(poll, pollMs());
+    const onVis = () => {
+      if (!document.hidden) poll();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [poll, replay, refreshKey]);
 
   // 라이브: F3 연어 모드
@@ -225,7 +301,7 @@ export default function Home() {
         })
         .catch(() => {});
     run();
-    const id = setInterval(run, POLL_MS);
+    const id = setInterval(run, pollMs());
     return () => {
       dead = true;
       clearInterval(id);
@@ -274,7 +350,7 @@ export default function Home() {
         .catch(() => {});
     };
     run();
-    const id = setInterval(run, POLL_MS);
+    const id = setInterval(run, pollMs());
     return () => {
       dead = true;
       clearInterval(id);
@@ -581,18 +657,28 @@ export default function Home() {
       {/* 출발/도착 패널 — 네이버 길찾기 스타일 */}
       <section className={`${CARD} mt-3 flex items-stretch`}>
         <div className="flex min-w-0 flex-1 flex-col">
-          <button
-            onClick={() => setPicker("origin")}
-            className="flex min-w-0 items-center gap-2.5 px-4 py-3 text-left"
-          >
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full border-[2.5px] border-accent" />
-            <span className="min-w-0 truncate text-sm font-bold text-ink">
-              {origin.name}
-            </span>
-            <span className="ml-auto shrink-0 text-[11px] font-semibold text-faint">
+          <div className="flex min-w-0 items-center">
+            <button
+              onClick={() => setPicker("origin")}
+              className="flex min-w-0 flex-1 items-center gap-2.5 px-4 py-3 text-left"
+            >
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full border-[2.5px] border-accent" />
+              <span className="min-w-0 truncate text-sm font-bold text-ink">
+                {origin.name}
+              </span>
+            </button>
+            <button
+              onClick={originFromHere}
+              disabled={locating}
+              aria-label="내 위치에서 가장 가까운 정류장으로 출발 설정"
+              className={`grid h-8 w-8 shrink-0 place-items-center rounded-full bg-info-soft text-info ${locating ? "animate-pulse" : ""}`}
+            >
+              <LocateIcon />
+            </button>
+            <span className="ml-2.5 mr-4 shrink-0 text-[11px] font-semibold text-faint">
               출발
             </span>
-          </button>
+          </div>
           <div className="mx-4 border-t border-line" />
           <button
             onClick={() => setPicker("dest")}
@@ -659,7 +745,7 @@ export default function Home() {
       <div className="mt-3.5 flex flex-col gap-3 lg:grid lg:grid-cols-[1fr_400px] lg:items-start lg:gap-6">
         {/* 정류장 보드 */}
         <section className="order-3 flex flex-col gap-2.5 lg:order-none">
-          {routes === null && error ? (
+          {routes === null && error?.startsWith("노선") ? (
             <ErrorCard detail={error} onRetry={retry} onReplay={() => setReplay(true)} />
           ) : routes === null || (!updatedAt && !error) ? (
             <SkeletonCard />

@@ -16,11 +16,16 @@ const peak = predictBoarding(base);
 const offPeak = predictBoarding({ ...base, hour: 14 });
 assert(peak.expectedSeats < offPeak.expectedSeats, "피크에 더 많이 줄어야 함");
 
+// 실측(fit): 2층버스는 정류장당 더 많이 태움 — 승객의 이득은 잔여좌석 자체가 큰 데서 옴
 const doubleDeck = predictBoarding({ ...base, isDoubleDeck: true });
-assert(doubleDeck.boardingProbability >= peak.boardingProbability, "2층버스가 유리해야 함");
+assert(doubleDeck.expectedSeats <= peak.expectedSeats, "2층버스는 승차 흡수가 커야 함");
 
 const fullBus = predictBoarding({ ...base, remainSeats: 2 });
-assert(fullBus.boardingProbability <= 0.25, "만석 임박이면 확률 낮아야 함");
+assert(fullBus.boardingProbability <= 0.4, "만석 임박이면 확률 낮아야 함");
+assert(
+  predictBoarding({ ...base, remainSeats: 2, upstreamStopCount: 5 }).boardingProbability <= 0.2,
+  "만석 임박 + 상류 많으면 확률 더 낮아야 함",
+);
 assert(peak.boardingProbability > 0 && peak.boardingProbability < 1, "0~1 범위");
 
 assert(
@@ -42,9 +47,9 @@ assert(
   `비피크 39석/7정거장 확률이 너무 낮음: ${midday.boardingProbability}`,
 );
 
-// 대기열 반영: 내 앞 사람이 많을수록 확률 단조 감소, 0명이면 서버 확률과 일치
+// 대기열 반영: 내 앞 사람이 많을수록 확률 단조 감소(98% 캡 구간은 동률 허용)
 assert(
-  boardingProb(peak.expectedSeats, peak.sigma) >
+  boardingProb(peak.expectedSeats, peak.sigma) >=
     boardingProb(peak.expectedSeats - 5, peak.sigma) &&
     boardingProb(peak.expectedSeats - 5, peak.sigma) >
       boardingProb(peak.expectedSeats - 15, peak.sigma),

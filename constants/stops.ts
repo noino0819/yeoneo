@@ -59,15 +59,16 @@ export function classifyDest(destName: string): Destination | null {
 
 // 예측 계수 — 튜닝 가능하게 상수로 분리 (F2)
 // 정류장당 승차 = 승객 도착률(명/분) × 앞차 간격(분). base는 전형 배차에서의 정류장당 승차.
+// 2026-07-07 아침 녹화(rush-20260707, 트랙 138개) npm run fit 실측 반영
 export const PREDICT_COEF = {
-  peakBoardBase: 6, // 피크: typicalHeadwayMin 배차 기준 정류장당 예상 승차수
-  offPeakBoardBase: 2, // 비피크 동일 기준
+  peakBoardBase: 2, // 피크: typicalHeadwayMin 배차 기준 정류장당 예상 승차수 (실측 ~2.3명/정거장)
+  offPeakBoardBase: 0.5, // 비피크 동일 기준 — 한낮 실측(dev-sample)은 ~0, 소량 마진만
   typicalHeadwayMin: 10, // base가 가정하는 배차간격 — 도착률 = base / typicalHeadwayMin
-  peakStartHour: 7,
-  peakEndHour: 9,
+  peakStartHour: 6, // 실측: 06시대 승차율(2.4)이 07~08시대(2.3)와 동일 — 피크 창 6~10시
+  peakEndHour: 10,
   recentPassRelief: 1.5, // 최근 N분간 동일 방향 통과 대수당 승차 감소
-  doubleDeckRelief: 0.6, // 2층버스면 승차 압박 완화 계수 (좌석 공급 ↑)
-  overdispersion: 2, // 승차 수요 분산 배수(포아송 대비 날짜별 변동) — npm run fit으로 실측 피팅
+  doubleDeckRelief: 1.26, // 2층버스 정류장당 승차 배수 — 실측상 더 많이 태움(좌석 우위는 잔여좌석 값에 반영됨)
+  overdispersion: 5.4, // 승차 수요 분산 배수(피어슨 잔차² 평균, Poisson이면 1) — 실측
 };
 
 // F3 강북행 대안 카드용 환승 근사치 (분) — v1은 정적 추정치, UI에 "추정" 명시

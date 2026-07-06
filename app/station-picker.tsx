@@ -276,7 +276,7 @@ export function StationPicker({
             aria-hidden
           >
             <div
-              className={`h-[26px] w-[26px] rotate-45 rounded-[50%_50%_50%_4px] border-[2.5px] border-white shadow-md ${pinColor}`}
+              className={`h-[26px] w-[26px] -rotate-45 rounded-[50%_50%_50%_4px] border-[2.5px] border-white shadow-md ${pinColor}`}
             >
               <div className="absolute inset-[7px] rounded-full bg-white" />
             </div>

@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
         },
       ];
     });
+    if (cache.size >= 500) cache.clear(); // 무한 증식 방지
     cache.set(stationId, { at: Date.now(), data: routes });
     return NextResponse.json({ routes, cachedAt: Date.now() });
   } catch (e) {

@@ -19,10 +19,11 @@ async function gemini(data: unknown): Promise<string> {
   for (const model of MODELS) {
     try {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          // 키는 URL 대신 헤더로 — 로그·리퍼러에 안 남게
+          headers: { "content-type": "application/json", "x-goog-api-key": key },
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: SYSTEM }] },
             contents: [{ parts: [{ text: JSON.stringify(data) }] }],
@@ -59,8 +60,16 @@ function fallbackText(data: Record<string, unknown>): string {
 }
 
 export async function POST(req: NextRequest) {
-  const data = await req.json().catch(() => null);
-  if (!data) {
+  // 페이로드 상한 — 정상 요청은 수 KB, 초과분은 Gemini 쿼터 낭비 봇뿐
+  const raw = await req.text();
+  if (raw.length > 20_000) {
+    return NextResponse.json({ error: "본문이 너무 큽니다" }, { status: 413 });
+  }
+  let data: Record<string, unknown> | null = null;
+  try {
+    data = JSON.parse(raw);
+  } catch {}
+  if (!data || typeof data !== "object") {
     return NextResponse.json({ error: "JSON body 필요" }, { status: 400 });
   }
   // 방면 + 출발(첫 정류장) + 도착 정류장까지 캐시 키에 — 선택 바꾸면 새 브리핑
@@ -79,6 +88,7 @@ export async function POST(req: NextRequest) {
     console.error("briefing fallback:", e);
     entry = { at: Date.now(), text: fallbackText(data), ai: false };
   }
+  if (cached.size >= 200) cached.clear(); // ponytail: 무한 증식 방지, LRU 필요해지면 교체
   cached.set(key, entry);
   return NextResponse.json({ briefing: entry.text, ai: entry.ai, cachedAt: entry.at });
 }

@@ -94,6 +94,7 @@ export async function getArrivalsCached(stationId: string): Promise<Arrival[]> {
   const hit = arrCache.get(stationId);
   if (hit && Date.now() - hit.at < ARR_TTL) return hit.data;
   const data = await getArrivals(stationId);
+  if (arrCache.size >= 500) arrCache.clear(); // ponytail: 무한 증식 방지, LRU 필요해지면 교체
   arrCache.set(stationId, { at: Date.now(), data });
   return data;
 }

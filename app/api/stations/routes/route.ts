@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
       name: String(r.routeName ?? ""),
       dest: String(r.routeDestName ?? ""),
     }));
+    if (cache.size >= 500) cache.clear(); // 무한 증식 방지
     cache.set(stationId, { at: Date.now(), data: routes });
     return NextResponse.json({ routes });
   } catch (e) {

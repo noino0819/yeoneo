@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
   }
   try {
     const vehicles = await getBusLocations(routeId);
+    if (cache.size >= 500) cache.clear(); // 무한 증식 방지
     cache.set(routeId, { at: Date.now(), data: vehicles });
     return NextResponse.json({ vehicles, cachedAt: Date.now() });
   } catch (e) {

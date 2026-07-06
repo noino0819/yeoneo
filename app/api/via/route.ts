@@ -66,6 +66,7 @@ export async function GET(req: NextRequest) {
         }
       }),
     );
+    if (cache.size >= 500) cache.clear(); // 무한 증식 방지
     cache.set(key, { at: Date.now(), via });
     return NextResponse.json({ via } satisfies ViaResponse);
   } catch (e) {

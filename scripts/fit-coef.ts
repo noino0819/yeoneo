@@ -33,6 +33,9 @@ if (!files.length) {
 }
 
 // 1. 스냅샷 → 버스별 관측 시퀀스 (파일:정류장:노선:차량 단위)
+// 좌석제 판별: 일반 시내버스는 GBIS가 잔여좌석을 항상 0으로 보고(-1 아님) →
+// 녹화 전체에서 좌석이 한 번이라도 >0이었던 노선만 좌석제로 인정
+const seatRoutes = new Set<string>();
 const tracks = new Map<string, Obs[]>();
 for (const f of files) {
   const snaps: Snapshot[] = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
@@ -42,6 +45,7 @@ for (const f of files) {
     for (const [sid, arrivals] of Object.entries(snap.stations)) {
       for (const a of arrivals) {
         if (!a.plateNo1 || a.locationNo1 === null || (a.remainSeatCnt1 ?? -1) < 0) continue;
+        if (a.remainSeatCnt1! > 0) seatRoutes.add(String(a.routeId));
         const key = `${f}:${sid}:${a.routeId}:${a.plateNo1}`;
         const list = tracks.get(key) ?? [];
         list.push({
@@ -72,25 +76,42 @@ interface Sample {
   dd: boolean;
   headway: number | null;
 }
-const samples: Sample[] = [];
-for (const obs of tracks.values()) {
-  obs.sort((x, y) => x.t - y.t);
-  for (let i = 1; i < obs.length; i++) {
-    const a = obs[i - 1];
-    const b = obs[i];
-    const stops = a.loc - b.loc;
-    if (stops < 1 || b.t - a.t > 5 * 60_000) continue; // 전진 없음 / 관측 공백
-    const perStop = (a.seats - b.seats) / stops;
-    if (Math.abs(perStop) > 15) continue; // API 글리치 컷
-    samples.push({ perStop, stops, drop: a.seats - b.seats, hour: a.hour, peak: a.peak, dd: a.dd, headway: a.headway });
-  }
-}
-
 const median = (xs: number[]) => {
   const s = [...xs].sort((a, b) => a - b);
   return s.length ? (s[(s.length - 1) >> 1] + s[s.length >> 1]) / 2 : NaN;
 };
 const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+
+// 좌석 갱신과 locationNo 갱신이 비동기라(같은 loc에서 좌석이 줄어듦) 연속 쌍은 감소를 놓침
+// → 트랙 양끝점으로 측정: (첫 좌석 − 끝 좌석) / (첫 loc − 끝 loc). 트랙당 표본 1개.
+const samples: Sample[] = [];
+for (const [key, obs] of tracks) {
+  if (!seatRoutes.has(key.split(":")[2])) continue; // 비좌석제(가짜 0석) 노선 제외
+  obs.sort((x, y) => x.t - y.t);
+  const useful: Obs[] = [];
+  for (const o of obs) {
+    if (o.seats === 0) break; // 만석 이후는 승차 관측 불가(중도절단) — 그 전까지만 사용
+    useful.push(o);
+  }
+  if (useful.length < 2) continue;
+  const a = useful[0];
+  const b = useful[useful.length - 1];
+  const stops = a.loc - b.loc;
+  if (stops < 1) continue;
+  const perStop = (a.seats - b.seats) / stops;
+  if (Math.abs(perStop) > 15) continue; // API 글리치 컷
+  const mid = useful[useful.length >> 1];
+  const hws = useful.filter((o) => o.headway !== null).map((o) => o.headway!);
+  samples.push({
+    perStop,
+    stops,
+    drop: a.seats - b.seats,
+    hour: mid.hour,
+    peak: mid.peak,
+    dd: a.dd,
+    headway: hws.length ? median(hws) : null,
+  });
+}
 
 const groups = {
   peakNormal: samples.filter((s) => s.peak && !s.dd),
@@ -98,7 +119,9 @@ const groups = {
   offPeak: samples.filter((s) => !s.peak),
 };
 const MIN_SAMPLES = 10;
-const perStopOf = (g: Sample[]) => median(g.map((s) => s.perStop));
+// 승차는 특정 정류장에 몰림(0 다수 + 버스트) → 중앙값이 아니라 총감소/총통과 비율로 추정
+const perStopOf = (g: Sample[]) =>
+  g.reduce((a, s) => a + s.drop, 0) / g.reduce((a, s) => a + s.stops, 0);
 const headwayOf = (g: Sample[]) => {
   const hs = g.filter((s) => s.headway !== null).map((s) => s.headway!);
   return hs.length ? median(hs) : C.typicalHeadwayMin;
@@ -107,13 +130,12 @@ const headwayOf = (g: Sample[]) => {
 const toBase = (g: Sample[]) =>
   Math.round(((perStopOf(g) * C.typicalHeadwayMin) / headwayOf(g)) * 10) / 10;
 
-// 과산포: Poisson이면 Var(drop)=E[drop]. 실측 비율이 날짜별 변동 포함 분산 배수.
+// 과산포: 피어슨 잔차² 평균 — Poisson이면 1. 트랙별 통과 정류장 수(노출)로 정규화.
 const fitOverdispersion = (g: Sample[]) => {
-  const drops = g.filter((s) => s.drop > 0).map((s) => s.drop);
-  if (drops.length < MIN_SAMPLES) return null;
-  const m = mean(drops);
-  const v = mean(drops.map((d) => (d - m) ** 2));
-  return Math.max(1, Math.round((v / m) * 10) / 10);
+  const rate = perStopOf(g);
+  if (g.length < MIN_SAMPLES || !(rate > 0)) return null;
+  const r2 = g.map((s) => (s.drop - rate * s.stops) ** 2 / (rate * s.stops));
+  return Math.max(1, Math.round(mean(r2) * 10) / 10);
 };
 
 // 3. 백테스트: 좌석 감소 예측 MAE (현행 계수 vs 피팅 계수)
@@ -141,7 +163,7 @@ const fitted = {
   peak: enough(groups.peakNormal) ? toBase(groups.peakNormal) : C.peakBoardBase,
   offPeak: enough(groups.offPeak) ? toBase(groups.offPeak) : C.offPeakBoardBase,
   ddRelief:
-    enough(groups.peakDD) && enough(groups.peakNormal)
+    enough(groups.peakDD) && enough(groups.peakNormal) && perStopOf(groups.peakNormal) > 0
       ? Math.round((perStopOf(groups.peakDD) / perStopOf(groups.peakNormal)) * 100) / 100
       : C.doubleDeckRelief,
 };
@@ -163,15 +185,15 @@ if (samples.length) {
   );
 
   // 실제 피크 창 확인용 — peakStartHour/peakEndHour(현행 7~9시)가 맞는지 눈으로 판단
-  const byHour = new Map<number, number[]>();
+  const byHour = new Map<number, Sample[]>();
   for (const s of samples) {
     const list = byHour.get(s.hour) ?? [];
-    list.push(s.perStop);
+    list.push(s);
     byHour.set(s.hour, list);
   }
-  console.log("\n시간대별 정류장당 승차(중앙값 · 표본수) — 피크 창 조정 참고:");
-  for (const [h, xs] of [...byHour].sort((x, y) => x[0] - y[0]))
-    console.log(`  ${String(h).padStart(2, "0")}시: ${median(xs).toFixed(1)}명 (${xs.length})`);
+  console.log("\n시간대별 정류장당 승차(총감소/총통과 · 표본수) — 피크 창 조정 참고:");
+  for (const [h, g] of [...byHour].sort((x, y) => x[0] - y[0]))
+    console.log(`  ${String(h).padStart(2, "0")}시: ${perStopOf(g).toFixed(1)}명 (${g.length})`);
 } else {
   console.log("\n표본 0개 — 녹화가 짧거나 좌석 정보가 없는 노선입니다.");
 }

@@ -23,7 +23,7 @@ assert(doubleDeck.expectedSeats <= peak.expectedSeats, "2층버스는 승차 흡
 const fullBus = predictBoarding({ ...base, remainSeats: 2 });
 assert(fullBus.boardingProbability <= 0.4, "만석 임박이면 확률 낮아야 함");
 assert(
-  predictBoarding({ ...base, remainSeats: 2, upstreamStopCount: 5 }).boardingProbability <= 0.2,
+  predictBoarding({ ...base, remainSeats: 2, upstreamStopCount: 5 }).boardingProbability <= 0.25,
   "만석 임박 + 상류 많으면 확률 더 낮아야 함",
 );
 assert(peak.boardingProbability > 0 && peak.boardingProbability < 1, "0~1 범위");

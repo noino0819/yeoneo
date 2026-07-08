@@ -199,8 +199,12 @@ if (samples.length) {
   console.log("\n표본 0개 — 녹화가 짧거나 좌석 정보가 없는 노선입니다.");
 }
 
-// CI 드리프트 게이트(--check): 표본 충분 + 피크 계수가 ±25% 벗어나면 exit 2
-if (flags.has("--check") && enough(groups.peakNormal)) {
+// CI 드리프트 게이트(--check): 피크 계수가 ±25% 벗어나거나 검증할 표본이 없으면 exit 2
+if (flags.has("--check")) {
+  if (!enough(groups.peakNormal)) {
+    console.log("\n⚠️ 검증 불가: 피크 표본 부족 — 녹화가 비었거나 API 키 문제 가능성");
+    process.exit(2);
+  }
   const rel = Math.abs(fitted.peak - C.peakBoardBase) / C.peakBoardBase;
   if (rel > 0.25) {
     console.log(

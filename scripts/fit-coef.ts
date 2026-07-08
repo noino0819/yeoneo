@@ -22,7 +22,8 @@ interface Snapshot {
 }
 
 const dir = path.join(process.cwd(), "fixtures");
-const args = process.argv.slice(2);
+const flags = new Set(process.argv.slice(2).filter((a) => a.startsWith("--")));
+const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const files = args.length
   ? args.map((n) => (n.endsWith(".json") ? n : `${n}.json`))
   : fs.readdirSync(dir).filter((f) => f.startsWith("rush-") && f.endsWith(".json"));
@@ -196,4 +197,16 @@ if (samples.length) {
     console.log(`  ${String(h).padStart(2, "0")}시: ${perStopOf(g).toFixed(1)}명 (${g.length})`);
 } else {
   console.log("\n표본 0개 — 녹화가 짧거나 좌석 정보가 없는 노선입니다.");
+}
+
+// CI 드리프트 게이트(--check): 표본 충분 + 피크 계수가 ±25% 벗어나면 exit 2
+if (flags.has("--check") && enough(groups.peakNormal)) {
+  const rel = Math.abs(fitted.peak - C.peakBoardBase) / C.peakBoardBase;
+  if (rel > 0.25) {
+    console.log(
+      `\n⚠️ 드리프트 감지: peakBoardBase 현행 ${C.peakBoardBase} vs 실측 ${fitted.peak} (${Math.round(rel * 100)}% 차이) — 재피팅 검토 필요`,
+    );
+    process.exit(2);
+  }
+  console.log("\n드리프트 체크 통과 (±25% 이내)");
 }

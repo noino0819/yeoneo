@@ -1,0 +1,55 @@
+# 평일 아침마다 러너가 직접 출근시간을 녹화하고, 배포된 예측 계수가 실측과
+# 벌어졌는지(드리프트) 검증한다. 벌어지면 이슈를 만든다. 맥 crontab 대체.
+name: predict-validate
+
+on:
+  schedule:
+    - cron: "30 21 * * 0-4" # 평일 06:30 KST (UTC 전날 21:30)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  record-fit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      TZ: Asia/Seoul
+      GG_BUS_API_KEY: ${{ secrets.GG_BUS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: 출근시간 녹화 (10:00 KST까지)
+        run: npx tsx scripts/record.ts 10:00
+
+      - name: 계수 피팅 + 드리프트 체크
+        id: fit
+        run: |
+          npm run fit -- "rush-$(date +%Y%m%d)" --check | tee fit-report.txt
+          rc=${PIPESTATUS[0]}
+          { echo '```'; cat fit-report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+      - name: 녹화 아티팩트 업로드
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rush-${{ github.run_id }}
+          path: fixtures/rush-*.json
+          retention-days: 30
+
+      - name: 드리프트 이슈 생성
+        if: failure() && steps.fit.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "예측 계수 드리프트 감지 ($(date +%m/%d))" \
+            --body-file fit-report.txt
